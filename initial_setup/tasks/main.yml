@@ -20,26 +20,19 @@
       - unattended-upgrades
       - dbus-user-session
       - uidmap
+      - docker-compose
     state: present
 
-- name: Install Docker Compose
-  ansible.builtin.pip:
-    name: docker-compose
-    executable: pip3
-
-- name: Allow SSH, HTTP, and HTTPS through UFW
+- name: Allow SSH, HTTP, HTTPS, and Webhook through UFW
   community.general.ufw:
     rule: allow
     port: "{{ item }}"
     proto: tcp
   loop:
     - "{{ ssh_port }}"
+    - '5000'
     - http
     - https
-
-- name: Enable UFW
-  community.general.ufw:
-    state: enabled
 
 - name: Allow WireGuard through UFW
   community.general.ufw:
@@ -47,11 +40,9 @@
     port: '51820'
     proto: udp
 
-- name: Allow webhook through UFW
+- name: Enable UFW
   community.general.ufw:
-    rule: allow
-    port: '5000'
-    proto: tcp
+    state: enabled
 
 - name: Configure fail2ban jail.local
   ansible.builtin.template:
@@ -89,8 +80,6 @@ APT::Periodic::Unattended-Upgrade "1";'
   ansible.builtin.template:
     src: status_server.py.j2
     dest: /var/www/status/status_server.py
-    vars:
-      status_port: 5001
 
 - name: Template status service file
   ansible.builtin.template:
@@ -109,6 +98,37 @@ APT::Periodic::Unattended-Upgrade "1";'
     enabled: yes
     state: started
     daemon_reload: yes
+
+- name: Create new user
+  ansible.builtin.user:
+    name: "{{ new_user }}"
+    password: "{{ new_user_password | password_hash('sha512') }}" # Hash the password
+    shell: /bin/bash
+    groups: sudo
+    append: yes
+    state: present
+
+- name: Add new user to sudoers (without password)
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers.d/{{ new_user }}
+    create: yes
+    mode: '0440'
+    line: "{{ new_user }} ALL=(ALL) NOPASSWD: ALL"
+    validate: /usr/sbin/visudo -cf %s
+
+- name: Set authorized key for new user
+  ansible.builtin.authorized_key:
+    user: "{{ new_user }}"
+    state: present
+    key: "{{ new_user_ssh_key }}"
+
+- name: Create .ansible/tmp directory for new_user
+  ansible.builtin.file:
+    path: "/home/{{ new_user }}/.ansible/tmp"
+    state: directory
+    owner: "{{ new_user }}"
+    group: "{{ new_user }}"
+    mode: '0700'
 
 - name: Include reverse_proxy tasks
   ansible.builtin.include_tasks: reverse_proxy.yml

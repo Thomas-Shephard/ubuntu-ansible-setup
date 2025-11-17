@@ -10,7 +10,8 @@ It automates the following:
 
 ## Requirements
 
-- **Ansible:** Must be installed on your local machine.
+- **Ansible:** Must be installed on your local machine. You can install it using pip: `pip install ansible`.
+  **Note:** Ansible does not support Windows as a control node. If you are on Windows, it is recommended to use Windows Subsystem for Linux (WSL) to run Ansible.
 - **Ubuntu:** A fresh installation of Ubuntu 24.04 or 25.04.
 - **Root Access:** You will need root access to the server for the initial playbook run.
 
@@ -40,14 +41,15 @@ This section outlines the essential steps to prepare your Ubuntu machine, includ
     Open `initial_setup/vars/main.yml` and configure the server settings:
     - `new_user`: The username for your new, non-root user.
     - `new_user_password`: The password for this user.
-    - `new_user_ssh_key`: Your public SSH key. This will be used to log in as the new user.
+    - `new_user_ssh_key`: Your public SSH key. You can generate one using `ssh-keygen -t rsa -b 4096 -C "your_email@example.com"`. After generation, display it with `cat ~/.ssh/id_rsa.pub`. This will be used to log in as the new user.
     - `ssh_port`: The port for SSH (defaults to `22`).
     - `webhook_secret`: A secret string for securing the GitHub webhook. It is recommended to generate a long, random string for this value (e.g., using `openssl rand -hex 32` or a password manager).
+    - `status_port`: The port for the service status webpage (defaults to `5001`).
 
 3.  **Run the Playbook:**
     Execute the main playbook to set up the server:
     ```bash
-    ansible-playbook -i inventory playbook.yml
+    ansible-playbook -i inventory playbook.yml --ask-pass --ask-become-pass
     ```
     After this playbook completes, you should log in to your server using the new user and SSH key.
 

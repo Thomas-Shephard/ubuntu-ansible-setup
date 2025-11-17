@@ -12,3 +12,11 @@
   ansible.builtin.systemd:
     name: webhook
     state: restarted
+- name: restart wireguard
+  ansible.builtin.systemd:
+    name: wg-quick@wg0
+    state: restarted
+- name: restart apparmor
+  ansible.builtin.service:
+    name: apparmor
+    state: restarted

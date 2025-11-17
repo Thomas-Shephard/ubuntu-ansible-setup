@@ -30,6 +30,7 @@ def status():
     </head>
     <body>
         <h1>Deployed Services</h1>
+        {% raw %}
         {% if apps %}
             {% for app_name, ports in apps.items() %}
                 <h2>{{ app_name }}</h2>
@@ -45,6 +46,7 @@ def status():
         {% else %}
             <p>No applications deployed yet.</p>
         {% endif %}
+        {% endraw %}
     </body>
     </html>
     """
