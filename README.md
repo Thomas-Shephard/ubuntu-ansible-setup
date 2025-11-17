@@ -171,3 +171,10 @@ This section explains how to manage access to your server's internal services us
     - Open the generated `<client_name>.conf` file.
     - Replace `YOUR_CLIENT_PRIVATE_KEY` with the private key you generated in step 1.
     - Import this modified file into your WireGuard client and activate the connection.
+
+---
+
+## 4. Service Status Webpage
+This playbook automatically creates a simple webpage that lists all deployed services and provides clickable links to access them.
+
+This page is accessible **via VPN only** at `http://<your_server_ip>:5001`.

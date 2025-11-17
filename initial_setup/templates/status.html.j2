@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Status</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; }
+        h1 { color: #333; }
+        ul { list-style-type: none; padding: 0; }
+        li { margin: 1em 0; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <h1>Deployed Services</h1>
+    <ul>
+        {% for port_name, host_port in found_ports.items() %}
+        <li>
+            <strong>{{ port_name | replace('_PORT', '') | lower | capitalize }}:</strong>
+            <a href="http://{{ ansible_host }}:{{ host_port }}" target="_blank">http://{{ ansible_host }}:{{ host_port }}</a>
+        </li>
+        {% endfor %}
+    </ul>
+</body>
+</html>

@@ -91,6 +91,11 @@
       Service {{ port_name | replace('_PORT', '') | lower | capitalize }} ({{ port_name }}) is accessible via VPN at {{ ansible_host }}:{{ host_port }}
       {% endfor %}
 
+- name: Update status webpage
+  ansible.builtin.template:
+    src: ../initial_setup/templates/status.html.j2
+    dest: /var/www/status/index.html
+
 - name: Create app directory
   ansible.builtin.file:
     path: "/home/{{ app_user }}/app"

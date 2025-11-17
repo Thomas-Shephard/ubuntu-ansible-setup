@@ -1,0 +1,17 @@
+from flask import Flask, render_template_string
+import os
+
+app = Flask(__name__)
+
+@app.route('/')
+def status():
+    # Check if the index.html file exists and is not empty
+    if os.path.exists('/var/www/status/index.html') and os.path.getsize('/var/www/status/index.html') > 0:
+        with open('/var/www/status/index.html', 'r') as f:
+            template_str = f.read()
+        return render_template_string(template_str)
+    else:
+        return "<h1>Status</h1><p>No application data found. Please run the app_deployment playbook.</p>"
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port={{ status_port }})

@@ -79,6 +79,37 @@ APT::Periodic::Unattended-Upgrade "1";'
     dest: /etc/apt/apt.conf.d/20auto-upgrades
     mode: '0644'
 
+- name: Create status server directory
+  ansible.builtin.file:
+    path: /var/www/status
+    state: directory
+    mode: '0755'
+
+- name: Template status server script
+  ansible.builtin.template:
+    src: status_server.py.j2
+    dest: /var/www/status/status_server.py
+    vars:
+      status_port: 5001
+
+- name: Template status service file
+  ansible.builtin.template:
+    src: status.service.j2
+    dest: /etc/systemd/system/status.service
+
+- name: Create initial status webpage
+  ansible.builtin.file:
+    path: /var/www/status/index.html
+    state: touch
+    mode: '0644'
+
+- name: Enable and start status service
+  ansible.builtin.systemd:
+    name: status
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
 - name: Include reverse_proxy tasks
   ansible.builtin.include_tasks: reverse_proxy.yml
 

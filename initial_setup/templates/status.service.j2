@@ -1,0 +1,12 @@
+[Unit]
+Description=Status Webpage Server
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/var/www/status
+ExecStart=/usr/bin/python3 /var/www/status/status_server.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
