@@ -1,0 +1,63 @@
+---
+# tasks file for vpn_setup
+- name: Install WireGuard
+  ansible.builtin.apt:
+    name: wireguard
+    state: present
+
+- name: Create WireGuard configuration directory
+  ansible.builtin.file:
+    path: /etc/wireguard
+    state: directory
+    mode: '0700'
+
+- name: Generate server private key
+  ansible.builtin.command:
+    cmd: wg genkey
+    creates: /etc/wireguard/server_private.key
+  register: server_private_key
+  changed_when: server_private_key.stdout != ""
+
+- name: Save server private key
+  ansible.builtin.copy:
+    content: "{{ server_private_key.stdout }}"
+    dest: /etc/wireguard/server_private.key
+    mode: '0600'
+  when: server_private_key.stdout != ""
+
+- name: Generate server public key
+  ansible.builtin.command:
+    cmd: wg pubkey
+    stdin: "{{ server_private_key.stdout }}"
+    creates: /etc/wireguard/server_public.key
+  register: server_public_key
+  changed_when: server_public_key.stdout != ""
+  when: server_private_key.stdout != ""
+
+- name: Save server public key
+  ansible.builtin.copy:
+    content: "{{ server_public_key.stdout }}"
+    dest: /etc/wireguard/server_public.key
+    mode: '0644'
+  when: server_public_key.stdout != ""
+
+- name: Create WireGuard configuration
+  ansible.builtin.template:
+    src: wg0.conf.j2
+    dest: /etc/wireguard/wg0.conf
+    mode: '0600'
+  notify: restart wireguard
+
+- name: Enable IP forwarding
+  ansible.builtin.sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    sysctl_set: yes
+    state: present
+    reload: yes
+
+- name: Enable WireGuard service
+  ansible.builtin.systemd:
+    name: wg-quick@wg0
+    enabled: yes
+    state: started

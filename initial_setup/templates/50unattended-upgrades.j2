@@ -1,0 +1,48 @@
+Unattended-Upgrade::Allowed-Origins {
+        "${distro_id}:${distro_codename}";
+        "${distro_id}:${distro_codename}-security";
+        // Extended Security Maintenance; doesn't necessarily match the suite name, but can be
+        // manually configured.
+        // "UbuntuESMApps:${distro_codename}-apps-security";
+        // "UbuntuESM:${distro_codename}-infra-security";
+};
+
+// Automatically upgrade packages from these (origin:archive) pairs
+//
+// Note that the package will still need to be flagged as upgradable by apt.
+// Read /etc/apt/sources.list.d/ for more information.
+//
+// The following setting takes precedence over the Allowed-Origins setting.
+//
+//Unattended-Upgrade::Package-Blacklist {
+//      // The following packages will be upgraded without any questions
+//      // if a new version is available in the allowed origins.
+//      // "vim";
+//      // "libc6";
+//      // "libc6-dev";
+//      // "libc6-i686";
+//};
+
+// Do automatic removal of unused dependencies after the upgrade
+// (equivalent to apt autoremove)
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+
+// Do automatic reboot after the upgrade if the system requires it
+// (e.g. a new kernel has been installed)
+Unattended-Upgrade::Automatic-Reboot "true";
+
+// If automatic reboot is enabled, reboot at the earliest convenience
+// (usually 2:00 in the morning)
+Unattended-Upgrade::Automatic-Reboot-Time "02:00";
+
+// Use the following option to specify a list of packages that will be
+// upgraded automatically.
+//
+//Unattended-Upgrade::Automatic-Upgrade-Packages {
+//      // The following packages will be upgraded without any questions
+//      // if a new version is available in the allowed origins.
+//      // "vim";
+//      // "libc6";
+//      // "libc6-dev";
+//      // "libc6-i686";
+//};

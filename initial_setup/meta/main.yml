@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  author: Thomas Shephard
+  description: An Ansible role for initial server setup
+  license: MIT
+  min_ansible_version: 2.9
+  platforms:
+    - name: Ubuntu
+      versions:
+        - 24.04
+        - 25.04
+  galaxy_tags: []
+
+dependencies: []

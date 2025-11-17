@@ -1,0 +1,90 @@
+---
+# tasks file for app_deployment
+- name: Create a new user for the application
+  ansible.builtin.user:
+    name: "{{ app_user }}"
+    shell: /bin/bash
+    groups: docker
+    append: yes
+    create_home: yes
+    password: "{{ app_user_password | password_hash('sha512') }}"
+
+- name: Install Flask
+  ansible.builtin.pip:
+    name: Flask
+    executable: pip3
+
+- name: Create app directory
+  ansible.builtin.file:
+    path: "/home/{{ app_user }}/app"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: '0755'
+
+- name: Clone the application repository
+  ansible.builtin.git:
+    repo: "{{ app_repo }}"
+    dest: "/home/{{ app_user }}/app"
+    version: master
+    accept_hostkey: yes
+  become: yes
+  become_user: "{{ app_user }}"
+
+- name: Check for docker-compose.yml
+  ansible.builtin.stat:
+    path: "/home/{{ app_user }}/app/docker-compose.yml"
+  register: docker_compose_file
+
+- name: Fail if docker-compose.yml not found
+  ansible.builtin.fail:
+    msg: "docker-compose.yml not found in the repository"
+  when: not docker_compose_file.stat.exists
+
+- name: Run docker-compose
+  ansible.builtin.command:
+    cmd: docker-compose up -d --build
+    chdir: "/home/{{ app_user }}/app"
+  become: yes
+  become_user: "{{ app_user }}"
+
+- name: Create Nginx site configuration
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: "/etc/nginx/sites-available/{{ domain_name }}"
+  notify: restart nginx
+
+- name: Enable Nginx site
+  ansible.builtin.file:
+    src: "/etc/nginx/sites-available/{{ domain_name }}"
+    dest: "/etc/nginx/sites-enabled/{{ domain_name }}"
+    state: link
+  notify: restart nginx
+
+- name: Create webhook listener script
+  ansible.builtin.template:
+    src: webhook_listener.py.j2
+    dest: "/home/{{ app_user }}/webhook_listener.py"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: '0755'
+
+- name: Create update script
+  ansible.builtin.template:
+    src: update.sh.j2
+    dest: "/home/{{ app_user }}/update.sh"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: '0755'
+
+- name: Create systemd service for webhook listener
+  ansible.builtin.template:
+    src: webhook.service.j2
+    dest: /etc/systemd/system/webhook.service
+  notify: restart webhook
+
+- name: Enable webhook service
+  ansible.builtin.systemd:
+    name: webhook
+    enabled: yes
+    daemon_reload: yes

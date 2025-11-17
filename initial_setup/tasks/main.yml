@@ -1,0 +1,140 @@
+---
+# tasks file for initial_setup
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install essential packages
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - software-properties-common
+      - python3-pip
+      - virtualenv
+      - python3-setuptools
+      - ufw
+      - fail2ban
+      - unattended-upgrades
+    state: present
+
+- name: Create a new user
+  ansible.builtin.user:
+    name: "{{ new_user }}"
+    shell: /bin/bash
+    groups: sudo
+    append: yes
+    create_home: yes
+    password: "{{ new_user_password | password_hash('sha512') }}"
+
+- name: Set up SSH for the new user
+  ansible.posix.authorized_key:
+    user: "{{ new_user }}"
+    key: "{{ new_user_ssh_key }}"
+    state: present
+
+- name: Configure SSH daemon
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+  loop:
+    - { regexp: '^#?Port ', line: 'Port {{ ssh_port }}' }
+    - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
+    - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
+    - { regexp: '^#?ChallengeResponseAuthentication', line: 'ChallengeResponseAuthentication no' }
+    - { regexp: '^#?UsePAM', line: 'UsePAM no' }
+  notify: restart sshd
+
+- name: Add Docker GPG key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/trusted.gpg.d/docker.asc
+    mode: '0644'
+    force: true
+
+- name: Add Docker repository
+  ansible.builtin.apt_repository:
+    repo: "deb [arch=amd64 signed-by=/etc/apt/trusted.gpg.d/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+
+- name: Install Docker
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+    state: present
+    update_cache: yes
+
+- name: Add user to docker group
+  ansible.builtin.user:
+    name: "{{ new_user }}"
+    groups: docker
+    append: yes
+
+- name: Install Docker Compose
+  ansible.builtin.pip:
+    name: docker-compose
+    executable: pip3
+
+- name: Allow SSH, HTTP, and HTTPS through UFW
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - "{{ ssh_port }}"
+    - http
+    - https
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+
+- name: Allow WireGuard through UFW
+  community.general.ufw:
+    rule: allow
+    port: '51820'
+    proto: udp
+
+- name: Allow webhook through UFW
+  community.general.ufw:
+    rule: allow
+    port: '5000'
+    proto: tcp
+
+- name: Configure fail2ban jail.local
+  ansible.builtin.template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    mode: '0644'
+  notify: restart fail2ban
+
+- name: Ensure fail2ban is running and enabled
+  ansible.builtin.service:
+    name: fail2ban
+    state: started
+    enabled: yes
+
+- name: Configure unattended-upgrades
+  ansible.builtin.template:
+    src: 50unattended-upgrades.j2
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    mode: '0644'
+
+- name: Enable unattended-upgrades
+  ansible.builtin.copy:
+    content: 'APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";'
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: '0644'
+
+- name: Include reverse_proxy tasks
+  ansible.builtin.include_tasks: reverse_proxy.yml
+
+- name: Include vpn tasks
+  ansible.builtin.include_tasks: vpn.yml

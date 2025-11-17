@@ -1,0 +1,6 @@
+---
+# tasks file for reverse_proxy
+- name: Install Nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present

@@ -1,0 +1,10 @@
+---
+# handlers file for initial_setup
+- name: restart sshd
+  ansible.builtin.service:
+    name: sshd
+    state: restarted
+- name: restart fail2ban
+  ansible.builtin.service:
+    name: fail2ban
+    state: restarted

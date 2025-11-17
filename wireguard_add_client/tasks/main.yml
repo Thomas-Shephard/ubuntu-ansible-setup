@@ -1,0 +1,42 @@
+---
+# tasks file for wireguard_add_client
+- name: Find the next available IP address
+  ansible.builtin.shell: |
+    grep "AllowedIPs" /etc/wireguard/wg0.conf | awk -F'[ ./]' '{print $5}' | sort -n | tail -1 | awk '{print $1+1}'
+  register: next_ip_raw
+  changed_when: false
+
+- name: Set next_ip fact
+  ansible.builtin.set_fact:
+    next_ip: "{{ next_ip_raw.stdout }}"
+
+- name: Check for existing peer
+  ansible.builtin.command:
+    cmd: "grep -q '{{ client_public_key }}' /etc/wireguard/wg0.conf"
+  register: existing_peer
+  failed_when: false
+  changed_when: false
+
+- name: Add client peer to server configuration
+  ansible.builtin.lineinfile:
+    path: /etc/wireguard/wg0.conf
+    line: |
+      [Peer]
+      # {{ client_name }}
+      PublicKey = {{ client_public_key }}
+      AllowedIPs = 10.0.0.{{ next_ip }}/32
+    insertafter: EOF
+  notify: restart wireguard
+  when: existing_peer.rc != 0
+
+- name: Get server public key
+  ansible.builtin.slurp:
+    src: /etc/wireguard/server_public.key
+  register: server_public_key_b64
+
+- name: Create client configuration file
+  ansible.builtin.template:
+    src: client.conf.j2
+    dest: "{{ client_name }}.conf"
+  vars:
+    server_public_key: "{{ server_public_key_b64['content'] | b64decode }}"

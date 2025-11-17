@@ -1,0 +1,6 @@
+---
+- hosts: all
+  become: yes
+  roles:
+    - initial_setup
+    - app_deployment

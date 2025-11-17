@@ -1,0 +1,34 @@
+from flask import Flask, request
+import subprocess
+import hmac
+import hashlib
+
+app = Flask(__name__)
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    # Verify the signature
+    signature = request.headers.get('X-Hub-Signature')
+    if not signature:
+        return "Signature missing", 401
+
+    sha_name, signature = signature.split('=')
+    if sha_name != 'sha1':
+        return "Invalid signature type", 401
+
+    mac = hmac.new(b'{{ webhook_secret }}', msg=request.data, digestmod=hashlib.sha1)
+    if not hmac.compare_digest(mac.hexdigest(), signature):
+        return "Invalid signature", 401
+
+    # Handle the event
+    event = request.headers.get('X-GitHub-Event')
+    if event == "push":
+        payload = request.get_json()
+        if payload['ref'] == 'refs/heads/master':
+            subprocess.Popen(['/home/{{ app_user }}/update.sh'])
+            return "Update triggered", 200
+
+    return "Event not handled", 200
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
