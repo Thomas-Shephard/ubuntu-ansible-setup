@@ -91,10 +91,16 @@
       Service {{ port_name | replace('_PORT', '') | lower | capitalize }} ({{ port_name }}) is accessible via VPN at {{ ansible_host }}:{{ host_port }}
       {% endfor %}
 
-- name: Update status webpage
-  ansible.builtin.template:
-    src: ../initial_setup/templates/status.html.j2
-    dest: /var/www/status/index.html
+- name: Read apps.json
+  ansible.builtin.slurp:
+    src: /var/www/status/apps.json
+  register: apps_json_content
+
+- name: Update apps.json
+  ansible.builtin.copy:
+    content: "{{ apps_json_content.content | b64decode | from_json | combine({app_user: found_ports}) | to_json }}"
+    dest: /var/www/status/apps.json
+  when: apps_json_content.content is defined
 
 - name: Create app directory
   ansible.builtin.file:

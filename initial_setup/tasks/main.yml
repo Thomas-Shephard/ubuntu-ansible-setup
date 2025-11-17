@@ -97,10 +97,10 @@ APT::Periodic::Unattended-Upgrade "1";'
     src: status.service.j2
     dest: /etc/systemd/system/status.service
 
-- name: Create initial status webpage
-  ansible.builtin.file:
-    path: /var/www/status/index.html
-    state: touch
+- name: Create initial apps.json
+  ansible.builtin.copy:
+    content: "{}"
+    dest: /var/www/status/apps.json
     mode: '0644'
 
 - name: Enable and start status service

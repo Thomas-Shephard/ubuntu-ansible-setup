@@ -1,0 +1,48 @@
+---
+# tasks file for remove_app
+- name: Set app_user fact
+  ansible.builtin.set_fact:
+    app_user: "{{ app_repo | basename | regex_replace('.git$', '') }}"
+
+- name: Set app_domain_name fact
+  ansible.builtin.set_fact:
+    app_domain_name: "{{ app_repo | basename | regex_replace('.git$', '') }}.{{ domain_suffix }}"
+
+- name: Stop and remove Docker containers
+  ansible.builtin.command:
+    cmd: "/home/{{ app_user }}/bin/docker-compose down"
+    chdir: "/home/{{ app_user }}/app"
+  become: yes
+  become_user: "{{ app_user }}"
+  environment:
+    DOCKER_HOST: "unix:///run/user/{{ app_user_uid }}/docker.sock"
+  ignore_errors: yes
+
+- name: Remove Nginx site configuration
+  ansible.builtin.file:
+    path: "/etc/nginx/sites-available/{{ app_domain_name }}"
+    state: absent
+  notify: restart nginx
+
+- name: Remove Nginx site symlink
+  ansible.builtin.file:
+    path: "/etc/nginx/sites-enabled/{{ app_domain_name }}"
+    state: absent
+  notify: restart nginx
+
+- name: Remove application user
+  ansible.builtin.user:
+    name: "{{ app_user }}"
+    state: absent
+    remove: yes
+
+- name: Read apps.json
+  ansible.builtin.slurp:
+    src: /var/www/status/apps.json
+  register: apps_json_content
+
+- name: Remove app from apps.json
+  ansible.builtin.copy:
+    content: "{{ apps_json_content.content | b64decode | from_json | omit(app_user) | to_json }}"
+    dest: /var/www/status/apps.json
+  when: apps_json_content.content is defined

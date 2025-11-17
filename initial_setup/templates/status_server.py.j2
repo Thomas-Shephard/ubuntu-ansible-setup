@@ -1,17 +1,55 @@
 from flask import Flask, render_template_string
-import os
+import json
 
 app = Flask(__name__)
 
 @app.route('/')
 def status():
-    # Check if the index.html file exists and is not empty
-    if os.path.exists('/var/www/status/index.html') and os.path.getsize('/var/www/status/index.html') > 0:
-        with open('/var/www/status/index.html', 'r') as f:
-            template_str = f.read()
-        return render_template_string(template_str)
-    else:
-        return "<h1>Status</h1><p>No application data found. Please run the app_deployment playbook.</p>"
+    try:
+        with open('/var/www/status/apps.json', 'r') as f:
+            apps = json.load(f)
+    except (IOError, ValueError):
+        apps = {}
+
+    html = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Service Status</title>
+        <style>
+            body { font-family: sans-serif; margin: 2em; }
+            h1 { color: #333; }
+            h2 { color: #555; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 2em;}
+            ul { list-style-type: none; padding: 0; }
+            li { margin: 1em 0; }
+            a { color: #007bff; text-decoration: none; }
+            a:hover { text-decoration: underline; }
+        </style>
+    </head>
+    <body>
+        <h1>Deployed Services</h1>
+        {% if apps %}
+            {% for app_name, ports in apps.items() %}
+                <h2>{{ app_name }}</h2>
+                <ul>
+                    {% for port_name, host_port in ports.items() %}
+                    <li>
+                        <strong>{{ port_name | replace('_PORT', '') | lower | capitalize }}:</strong>
+                        <a href="http://{{ ansible_host }}:{{ host_port }}" target="_blank">http://{{ ansible_host }}:{{ host_port }}</a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            {% endfor %}
+        {% else %}
+            <p>No applications deployed yet.</p>
+        {% endif %}
+    </body>
+    </html>
+    """
+    return render_template_string(html, apps=apps, ansible_host=request.host.split(':')[0])
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port={{ status_port }})
+    app.run(host='0.0.0.0', port=5001)
+

@@ -178,3 +178,14 @@ This section explains how to manage access to your server's internal services us
 This playbook automatically creates a simple webpage that lists all deployed services and provides clickable links to access them.
 
 This page is accessible **via VPN only** at `http://<your_server_ip>:5001`.
+
+---
+
+## 5. Removing an Application
+To remove a deployed application, you can use the `remove_app.yml` playbook. This will stop the application's containers, remove the user and their files, and delete the Nginx configuration.
+
+You must provide the application's repository URL as an extra variable.
+
+```bash
+ansible-playbook -i inventory remove_app.yml -e "app_repo=https://github.com/user/my-cool-app.git" -e "domain_suffix=your_domain.com"
+```
