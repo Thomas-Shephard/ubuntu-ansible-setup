@@ -1,0 +1,34 @@
+---
+# tasks file for webhook
+- name: Install Flask
+  ansible.builtin.pip:
+    name: Flask
+    executable: pip3
+
+- name: Create webhook listener script
+  ansible.builtin.template:
+    src: webhook_listener.py.j2
+    dest: "/home/{{ new_user }}/webhook_listener.py"
+    owner: "{{ new_user }}"
+    group: "{{ new_user }}"
+    mode: '0755'
+
+- name: Create update script
+  ansible.builtin.template:
+    src: update.sh.j2
+    dest: "/home/{{ new_user }}/update.sh"
+    owner: "{{ new_user }}"
+    group: "{{ new_user }}"
+    mode: '0755'
+
+- name: Create systemd service for webhook listener
+  ansible.builtin.template:
+    src: webhook.service.j2
+    dest: /etc/systemd/system/webhook.service
+  notify: restart webhook
+
+- name: Enable webhook service
+  ansible.builtin.systemd:
+    name: webhook
+    enabled: yes
+    daemon_reload: yes

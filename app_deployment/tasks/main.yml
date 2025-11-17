@@ -1,18 +1,95 @@
 ---
 # tasks file for app_deployment
-- name: Create a new user for the application
+- name: Validate that APP_PORT is defined in app_ports
+  ansible.builtin.fail:
+    msg: "The 'app_ports' list in app_deployment/vars/main.yml must contain 'APP_PORT' for Nginx configuration."
+  when: "'APP_PORT' not in app_ports"
+
+- name: Set app_user fact
+  ansible.builtin.set_fact:
+    app_user: "{{ app_repo | basename | regex_replace('.git$', '') }}"
+
+- name: Create a new system user for the application
   ansible.builtin.user:
     name: "{{ app_user }}"
-    shell: /bin/bash
-    groups: docker
-    append: yes
+    shell: /usr/sbin/nologin
+    system: yes
     create_home: yes
-    password: "{{ app_user_password | password_hash('sha512') }}"
 
-- name: Install Flask
-  ansible.builtin.pip:
-    name: Flask
-    executable: pip3
+- name: Get app_user uid
+  ansible.builtin.command:
+    cmd: "id -u {{ app_user }}"
+  register: app_user_uid
+  changed_when: false
+
+- name: Download rootless docker install script
+  ansible.builtin.get_url:
+    url: https://get.docker.com/rootless
+    dest: "/home/{{ app_user }}/get-docker-rootless.sh"
+    mode: '0755'
+  become: yes
+  become_user: "{{ app_user }}"
+
+- name: Install rootless docker
+  ansible.builtin.command:
+    cmd: "/home/{{ app_user }}/get-docker-rootless.sh"
+  become: yes
+  become_user: "{{ app_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
+
+- name: Add Docker bin to PATH
+  ansible.builtin.lineinfile:
+    path: "/home/{{ app_user }}/.bashrc"
+    line: "export PATH=/home/{{ app_user }}/bin:$PATH"
+    create: yes
+  become: yes
+  become_user: "{{ app_user }}"
+
+- name: Add DOCKER_HOST to environment
+  ansible.builtin.lineinfile:
+    path: "/home/{{ app_user }}/.bashrc"
+    line: "export DOCKER_HOST=unix:///run/user/{{ app_user_uid.stdout }}/docker.sock"
+    create: yes
+  become: yes
+  become_user: "{{ app_user }}"
+
+- name: Enable user lingering for app_user
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger {{ app_user }}"
+
+- name: Start rootless docker service for app_user
+  ansible.builtin.systemd:
+    scope: user
+    name: docker
+    enabled: yes
+    state: started
+  become: yes
+  become_user: "{{ app_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
+
+- name: Find available ports for the application
+  ansible.builtin.shell: |
+    comm -23 <(seq 8080 8180 | sort) <(ss -Htan | awk '{print $4}' | awk -F':' '{print $NF}' | sort -u) | head -n {{ app_ports | length }}
+  register: next_available_ports
+  changed_when: false
+
+- name: Create a dictionary of found ports
+  ansible.builtin.set_fact:
+    found_ports: "{{ dict(app_ports | zip(next_available_ports.stdout_lines)) }}"
+
+- name: Set app_port fact for Nginx
+  ansible.builtin.set_fact:
+    app_port: "{{ found_ports.APP_PORT }}"
+
+- name: Display assigned ports
+  ansible.builtin.debug:
+    msg: |
+      Application ports have been assigned as follows:
+      {% for port_name, host_port in found_ports.items() %}
+      Service {{ port_name | replace('_PORT', '') | lower | capitalize }} ({{ port_name }}) is accessible via VPN at {{ ansible_host }}:{{ host_port }}
+      {% endfor %}
 
 - name: Create app directory
   ansible.builtin.file:
@@ -43,48 +120,21 @@
 
 - name: Run docker-compose
   ansible.builtin.command:
-    cmd: docker-compose up -d --build
+    cmd: "/home/{{ app_user }}/bin/docker-compose up -d --build"
     chdir: "/home/{{ app_user }}/app"
   become: yes
   become_user: "{{ app_user }}"
+  environment: "{{ {'DOCKER_HOST': 'unix:///run/user/{{ app_user_uid.stdout }}/docker.sock'} | combine(found_ports) }}"
 
 - name: Create Nginx site configuration
   ansible.builtin.template:
     src: nginx.conf.j2
-    dest: "/etc/nginx/sites-available/{{ domain_name }}"
+    dest: "/etc/nginx/sites-available/{{ app_domain_name }}"
   notify: restart nginx
 
 - name: Enable Nginx site
   ansible.builtin.file:
-    src: "/etc/nginx/sites-available/{{ domain_name }}"
-    dest: "/etc/nginx/sites-enabled/{{ domain_name }}"
+    src: "/etc/nginx/sites-available/{{ app_domain_name }}"
+    dest: "/etc/nginx/sites-enabled/{{ app_domain_name }}"
     state: link
   notify: restart nginx
-
-- name: Create webhook listener script
-  ansible.builtin.template:
-    src: webhook_listener.py.j2
-    dest: "/home/{{ app_user }}/webhook_listener.py"
-    owner: "{{ app_user }}"
-    group: "{{ app_user }}"
-    mode: '0755'
-
-- name: Create update script
-  ansible.builtin.template:
-    src: update.sh.j2
-    dest: "/home/{{ app_user }}/update.sh"
-    owner: "{{ app_user }}"
-    group: "{{ app_user }}"
-    mode: '0755'
-
-- name: Create systemd service for webhook listener
-  ansible.builtin.template:
-    src: webhook.service.j2
-    dest: /etc/systemd/system/webhook.service
-  notify: restart webhook
-
-- name: Enable webhook service
-  ansible.builtin.systemd:
-    name: webhook
-    enabled: yes
-    daemon_reload: yes

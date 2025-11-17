@@ -1,0 +1,54 @@
+---
+# tasks file for rootless_docker
+- name: Get new_user uid
+  ansible.builtin.command:
+    cmd: "id -u {{ new_user }}"
+  register: new_user_uid
+  changed_when: false
+
+- name: Download rootless docker install script
+  ansible.builtin.get_url:
+    url: https://get.docker.com/rootless
+    dest: "/home/{{ new_user }}/get-docker-rootless.sh"
+    mode: '0755'
+  become: yes
+  become_user: "{{ new_user }}"
+
+- name: Install rootless docker
+  ansible.builtin.command:
+    cmd: "/home/{{ new_user }}/get-docker-rootless.sh"
+  become: yes
+  become_user: "{{ new_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ new_user_uid.stdout }}"
+
+- name: Add Docker bin to PATH
+  ansible.builtin.lineinfile:
+    path: "/home/{{ new_user }}/.bashrc"
+    line: "export PATH=/home/{{ new_user }}/bin:$PATH"
+    create: yes
+  become: yes
+  become_user: "{{ new_user }}"
+
+- name: Add DOCKER_HOST to environment
+  ansible.builtin.lineinfile:
+    path: "/home/{{ new_user }}/.bashrc"
+    line: "export DOCKER_HOST=unix:///run/user/{{ new_user_uid.stdout }}/docker.sock"
+    create: yes
+  become: yes
+  become_user: "{{ new_user }}"
+
+- name: Enable user lingering for new_user
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger {{ new_user }}"
+
+- name: Start rootless docker service for new_user
+  ansible.builtin.systemd:
+    scope: user
+    name: docker
+    enabled: yes
+    state: started
+  become: yes
+  become_user: "{{ new_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ new_user_uid.stdout }}"

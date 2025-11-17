@@ -4,9 +4,9 @@ This project provides a set of Ansible playbooks to automate the setup and confi
 
 It automates the following:
 - **Initial Server Hardening:** Creates a new user, configures SSH, sets up a firewall, and installs security tools like Fail2ban.
-- **Core Services:** Installs Docker, Docker Compose, and Nginx.
+- **Core Services:** Installs Docker (in rootless mode for enhanced security), Docker Compose, and Nginx.
 - **VPN Access:** Sets up a WireGuard VPN server to provide secure access to internal services.
-- **Automated Deployments:** Configures a webhook listener to automatically deploy applications from a Git repository when changes are pushed.
+- **Automated Deployments:** Configures a centralized webhook listener to automatically deploy applications from a Git repository when changes are pushed.
 
 ## Requirements
 
@@ -42,6 +42,7 @@ This section outlines the essential steps to prepare your Ubuntu machine, includ
     - `new_user_password`: The password for this user.
     - `new_user_ssh_key`: Your public SSH key. This will be used to log in as the new user.
     - `ssh_port`: The port for SSH (defaults to `22`).
+    - `webhook_secret`: A secret string for securing the GitHub webhook. It is recommended to generate a long, random string for this value (e.g., using `openssl rand -hex 32` or a password manager).
 
 3.  **Run the Playbook:**
     Execute the main playbook to set up the server:
@@ -50,33 +51,97 @@ This section outlines the essential steps to prepare your Ubuntu machine, includ
     ```
     After this playbook completes, you should log in to your server using the new user and SSH key.
 
+4.  **Update Inventory for Subsequent Runs:**
+    After the initial setup, root login is disabled, and SSH password authentication is turned off. For all subsequent Ansible runs, you must update your `inventory` file to connect as the `new_user` with your SSH key.
+
+    Modify your `inventory` file like this:
+    ```ini
+    [servers]
+    your_server_ip ansible_user=your_new_user ansible_ssh_private_key_file=/path/to/your/private_key -e "ansible_port=your_ssh_port"
+    ```
+    Replace `your_new_user` with the value of `new_user`, `/path/to/your/private_key` with the path to your SSH private key, and `your_ssh_port` with the value of `ssh_port` if you changed it from the default 22.
+
 ---
 
 ## 2. Deploying an Application
 This section details how to deploy your web application using Docker Compose and set up automated deployments via GitHub webhooks.
 
+For each application you deploy, a dedicated, non-login system user will be created based on the repository name. This provides strong security and isolation between your applications.
+
 ### Steps
 
 1.  **Configure Application Variables:**
     Open `app_deployment/vars/main.yml` and configure your application's settings:
-    - `app_user`: The dedicated user for the application. Each application should have its own user for security and isolation.
-    - `app_user_password`: The password for the application user.
-    - `app_repo`: The Git repository URL of your application (e.g., `git@github.com:user/repo.git`).
-    - `domain_name`: The domain name that will point to your application.
-    - `webhook_secret`: A secret string for securing the GitHub webhook.
+    - `app_repo`: The Git repository URL of your application (e.g., `https://github.com/user/my-cool-app.git`). The user `my-cool-app` will be created automatically.
+    - `app_domain_name`: The domain name that will point to your application.
+    - `app_ports`: A list of environment variable names that your `docker-compose.yml` expects for port mappings. For each name in this list, the playbook will find a free host port and provide it as an environment variable. **`APP_PORT` is mandatory** as it is used by the Nginx reverse proxy.
 
-2.  **Run the Playbook Again:**
-    Execute the main playbook again. This time, it will clone your repository and deploy your application using the `docker-compose.yml` file from the repository.
+      Example:
+      ```yaml
+      app_ports:
+        - APP_PORT
+        - PHPMYADMIN_PORT
+      ```
+
+2.  **Prepare Your `docker-compose.yml`:**
+    Your application's `docker-compose.yml` must be structured to use the environment variables defined in `app_ports`.
+
+    - **Web Service:** Use the `${APP_PORT}` environment variable for the host port mapping.
+    - **Other Services (for VPN access):** Use their corresponding environment variables (e.g., `${PHPMYADMIN_PORT}`).
+    - **Internal Services:** Services that do not need to be accessed from outside the Docker network should not have a `ports` section.
+
+    Here is an example `docker-compose.yml` with a web server, a database, and phpMyAdmin:
+    ```yaml
+    version: '3.8'
+    services:
+      web:
+        image: my-web-image
+        restart: always
+        ports:
+          - "${APP_PORT:-80}:80"
+        environment:
+          # The web app connects to the database using the service name 'db'
+          - DATABASE_HOST=db
+
+      db:
+        image: postgres:13
+        restart: always
+        volumes:
+          - db_data:/var/lib/postgresql/data
+        environment:
+          - POSTGRES_PASSWORD=mysecretpassword
+
+      phpmyadmin:
+        image: phpmyadmin/phpmyadmin:latest
+        restart: always
+        ports:
+          - "${PHPMYADMIN_PORT:-8080}:80"
+        environment:
+          - PMA_HOST=db
+          - PMA_PORT=5432
+          - PMA_USER=postgres
+          - PMA_PASSWORD=mysecretpassword
+
+    volumes:
+      db_data:
+    ```
+    *(Note: The `:-8080` part provides a default host port for local development if the environment variable is not set.)*
+
+3.  **Point A Records:**
+    Before running the playbook, ensure that the A record for `{{ app_domain_name }}` (and `www.{{ app_domain_name }}` if applicable) in your DNS settings points to the IP address of your server.
+
+4.  **Run the Playbook Again:**
+    Execute the main playbook again. This time, it will create the application user, clone the repository, and deploy your application.
     ```bash
     ansible-playbook -i inventory playbook.yml
     ```
 
-3.  **Set up the GitHub Webhook:**
+5.  **Set up the GitHub Webhook:**
     To enable automatic deployments on `git push`:
     - In your GitHub repository, go to **Settings > Webhooks > Add webhook**.
-    - **Payload URL:** `http://<your_domain_name>:5000/webhook`
+    - **Payload URL:** `http://<your_server_ip>:5000/webhook`
     - **Content type:** `application/json`
-    - **Secret:** The value of `webhook_secret` from `app_deployment/vars/main.yml`.
+    - **Secret:** The value of `webhook_secret` from `initial_setup/vars/main.yml`.
     - **Events:** Select "Just the push event".
 
 ---

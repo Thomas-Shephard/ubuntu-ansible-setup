@@ -1,7 +1,6 @@
 ---
 # vars file for app_deployment
-app_user: "my_app_user"
-app_user_password: "my_app_password"
 app_repo: "your_app_repo.git"
-webhook_secret: "your_webhook_secret"
-domain_name: your_domain.com
+app_domain_name: your_domain.com
+app_ports:
+  - APP_PORT

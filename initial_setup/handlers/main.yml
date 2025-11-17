@@ -8,3 +8,7 @@
   ansible.builtin.service:
     name: fail2ban
     state: restarted
+- name: restart webhook
+  ansible.builtin.systemd:
+    name: webhook
+    state: restarted

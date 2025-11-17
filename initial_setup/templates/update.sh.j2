@@ -1,0 +1,11 @@
+#!/bin/bash
+REPO_NAME=$1
+APP_USER=$1
+
+APP_DIR="/home/$APP_USER/app"
+
+if [ -d "$APP_DIR" ]; then
+  cd "$APP_DIR"
+  git pull origin master
+  /home/"$APP_USER"/bin/docker-compose up -d --build
+fi

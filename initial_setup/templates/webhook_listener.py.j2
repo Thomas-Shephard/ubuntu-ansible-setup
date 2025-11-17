@@ -2,6 +2,7 @@ from flask import Flask, request
 import subprocess
 import hmac
 import hashlib
+import json
 
 app = Flask(__name__)
 
@@ -25,8 +26,9 @@ def webhook():
     if event == "push":
         payload = request.get_json()
         if payload['ref'] == 'refs/heads/master':
-            subprocess.Popen(['/home/{{ app_user }}/update.sh'])
-            return "Update triggered", 200
+            repo_name = payload['repository']['name']
+            subprocess.Popen(['/home/{{ new_user }}/update.sh', repo_name])
+            return "Update triggered for " + repo_name, 200
 
     return "Event not handled", 200
 
