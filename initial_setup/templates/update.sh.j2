@@ -3,9 +3,34 @@ REPO_NAME=$1
 APP_USER=$1
 
 APP_DIR="/home/$APP_USER/app"
+ENV_EXAMPLE_PATH="$APP_DIR/.env.example"
+ENV_PATH="$APP_DIR/.env"
 
 if [ -d "$APP_DIR" ]; then
   cd "$APP_DIR"
   git pull origin master
+
+  if [ -f "$ENV_EXAMPLE_PATH" ]; then
+    # Extract keys from .env.example
+    ENV_EXAMPLE_KEYS=$(grep -oP '^[A-Z_]+(?==)' "$ENV_EXAMPLE_PATH" | sort)
+
+    # Extract keys from existing .env
+    if [ -f "$ENV_PATH" ]; then
+      EXISTING_ENV_KEYS=$(grep -oP '^[A-Z_]+(?==)' "$ENV_PATH" | sort)
+    else
+      EXISTING_ENV_KEYS=""
+    fi
+
+    # Find new keys in .env.example not present in .env
+    NEW_KEYS=$(comm -13 <(echo "$EXISTING_ENV_KEYS") <(echo "$ENV_EXAMPLE_KEYS"))
+
+    if [ -n "$NEW_KEYS" ]; then
+      echo "ERROR: New environment variables detected in .env.example that are not in .env:" >&2
+      echo "$NEW_KEYS" >&2
+      echo "Please run the Ansible playbook interactively to provide values for these new secrets." >&2
+      exit 1
+    fi
+  fi
+
   /home/"$APP_USER"/bin/docker-compose up -d --build
 fi

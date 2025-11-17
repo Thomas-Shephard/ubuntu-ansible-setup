@@ -119,6 +119,68 @@
   become: yes
   become_user: "{{ app_user }}"
 
+- name: Check for .env.example
+  ansible.builtin.stat:
+    path: "/home/{{ app_user }}/app/.env.example"
+  register: env_example_file
+  become: yes
+  become_user: "{{ app_user }}"
+
+- name: Read .env.example content
+  ansible.builtin.slurp:
+    src: "/home/{{ app_user }}/app/.env.example"
+  register: env_example_content
+  when: env_example_file.stat.exists
+  become: yes
+  become_user: "{{ app_user }}"
+
+- name: Extract variable names from .env.example
+  ansible.builtin.set_fact:
+    env_vars_to_prompt: "{{ env_example_content.content | b64decode | splitlines | select('match', '^[A-Z_]+ *=') | map('split', '=') | map(attribute=0) | list }}"
+  when: env_example_file.stat.exists and env_example_content.content is defined
+
+- name: Read existing .env file content
+  ansible.builtin.slurp:
+    src: "/home/{{ app_user }}/app/.env"
+  register: existing_env_file_content
+  when:
+    - env_example_file.stat.exists
+    - env_vars_to_prompt is defined and env_vars_to_prompt | length > 0
+    - ansible_check_mode is not defined or not ansible_check_mode # Only read if not in check mode
+  become: yes
+  become_user: "{{ app_user }}"
+  ignore_errors: yes # File might not exist yet
+
+- name: Parse existing .env file into dictionary
+  ansible.builtin.set_fact:
+    existing_env_values: "{{ existing_env_file_content.content | b64decode | from_ini }}"
+  when: existing_env_file_content.content is defined and existing_env_file_content.content | length > 0
+
+- name: Prompt for .env variables, reusing existing values
+  ansible.builtin.set_fact:
+    user_env_inputs_processed: "{{ user_env_inputs_processed | default({}) | combine({item: (ansible.builtin.prompt(name=item, prompt='Enter value for %s (current: %s - press Enter to keep)' | format(item, existing_env_values[item] | default('')), default=existing_env_values[item] | default(''), private=yes))}) }}"
+  loop: "{{ env_vars_to_prompt }}"
+  vars:
+    existing_env_values: "{{ existing_env_values | default({}) }}" # Ensure it's always a dict
+  when: env_vars_to_prompt is defined and env_vars_to_prompt | length > 0 and not ansible_check_mode
+
+- name: Create .env file content from prompts
+  ansible.builtin.set_fact:
+    env_file_lines: "{{ env_file_lines | default([]) + ['%s=%s' | format(item.key, item.value)] }}"
+  loop: "{{ user_env_inputs_processed | dict2items }}"
+  when: user_env_inputs_processed is defined and user_env_inputs_processed | length > 0
+
+- name: Write .env file
+  ansible.builtin.copy:
+    content: "{{ env_file_lines | join('\\n') }}"
+    dest: "/home/{{ app_user }}/app/.env"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: '0600'
+  when: env_file_lines is defined and env_file_lines | length > 0
+  become: yes
+  become_user: "{{ app_user }}"
+
 - name: Check for docker-compose.yml
   ansible.builtin.stat:
     path: "/home/{{ app_user }}/app/docker-compose.yml"

@@ -127,16 +127,21 @@ For each application you deploy, a dedicated, non-login system user will be crea
     ```
     *(Note: The `:-8080` part provides a default host port for local development if the environment variable is not set.)*
 
-3.  **Point A Records:**
+3.  **Secret Management with `.env.example`:**
+    If your application repository contains a `.env.example` file, the playbook will automatically detect it. For each variable defined in this file, Ansible will prompt you to enter a value during the playbook run. These values will then be used to create a `.env` file in your application's directory (`/home/{{ app_user }}/app/.env`), which Docker Compose will automatically pick up. This ensures your sensitive application secrets are not hardcoded in your repository or Ansible playbooks.
+
+    **Important Note for Webhook Deployments:** If new keys are added to your `.env.example` file, a webhook-triggered deployment will **fail**. This is because new secrets require interactive input. To resolve this, you must manually run the `ansible-playbook` from your control machine, specifically targeting the `app_deployment` role, which will prompt you for the new secret values. Once the `.env` file is updated, subsequent webhook deployments will proceed normally.
+
+4.  **Point A Records:**
     Before running the playbook, ensure that the A record for `{{ app_domain_name }}` (and `www.{{ app_domain_name }}` if applicable) in your DNS settings points to the IP address of your server.
 
-4.  **Run the Playbook Again:**
+5.  **Run the Playbook Again:**
     Execute the main playbook again. This time, it will create the application user, clone the repository, and deploy your application.
     ```bash
     ansible-playbook -i inventory playbook.yml
     ```
 
-5.  **Set up the GitHub Webhook:**
+6.  **Set up the GitHub Webhook:**
     To enable automatic deployments on `git push`:
     - In your GitHub repository, go to **Settings > Webhooks > Add webhook**.
     - **Payload URL:** `http://<your_server_ip>:5000/webhook`
