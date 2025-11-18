@@ -1,37 +1,26 @@
-# Ubuntu Setup with Ansible
+# Ubuntu Ansible Setup
 
 This project provides a set of Ansible playbooks to automate the setup and configuration of a secure Ubuntu server, ready to host web applications in Docker containers.
 
-It automates the following:
-- **Initial Server Hardening:** Creates a new user, configures SSH, sets up a firewall, and installs security tools like Fail2ban.
-- **Core Services:** Installs Docker (in rootless mode for enhanced security), Docker Compose, and Nginx.
-- **VPN Access:** Sets up a WireGuard VPN server to provide secure access to internal services.
-- **Automated Deployments:** Configures a centralized webhook listener to automatically deploy applications from a Git repository when changes are pushed.
-
 ## Requirements
 
-- **Ansible:** Must be installed on your local machine. You can install it using pip: `pip install ansible`.
+- **Ansible:** Must be installed on your local machine.
   **Note:** Ansible does not support Windows as a control node. If you are on Windows, it is recommended to use Windows Subsystem for Linux (WSL) to run Ansible.
-- **Ubuntu:** A fresh installation of Ubuntu 24.04 or 25.04.
-- **Root Access:** You will need root access to the server for the initial playbook run.
-
-## Project Structure
-
-- **`playbook.yml`**: The main playbook for initial setup and application deployment.
-- **`add_client.yml`**: The playbook for adding new VPN clients.
-- **`initial_setup/`**: An Ansible role for the initial server configuration.
-- **`app_deployment/`**: An Ansible role for deploying an application.
-- **`wireguard_add_client/`**: An Ansible role for adding new WireGuard clients.
+- **Ubuntu:** A fresh installation of Ubuntu 24.04 or later.
+- **Root Access:** You will need root access to the server for the initial setup run.
 
 ---
 
-## 1. Initial Server Setup
-This section outlines the essential steps to prepare your Ubuntu machine, including user creation, SSH hardening, and core service installations.
+## Usage
 
-### Steps
+This project uses a two-playbook workflow: `setup.yml` for initial server configuration, and `deploy.yml` for deploying applications.
+
+### Step 1: Initial Server Setup
+
+This playbook performs the initial, one-time server setup. It hardens the server, installs necessary services (Nginx, WireGuard, etc.), and creates a new administrative user with `sudo` privileges.
 
 1.  **Create an Inventory File:**
-    Create a file named `inventory` in the root of this project with the IP address of your server:
+    Create a file named `inventory` in the root of this project with the IP address of your server. **You must connect as `root` for this first step.**
     ```ini
     [servers]
     your_server_ip ansible_user=root
@@ -39,111 +28,48 @@ This section outlines the essential steps to prepare your Ubuntu machine, includ
 
 2.  **Configure Server Variables:**
     Open `initial_setup/vars/main.yml` and configure the server settings:
-    - `new_user`: The username for your new, non-root user.
+    - `new_user`: The username for your new, non-root administrative user.
     - `new_user_password`: The password for this user.
-    - `new_user_ssh_key`: Your public SSH key. You can generate one using `ssh-keygen -t rsa -b 4096 -C "your_email@example.com"`. After generation, display it with `cat ~/.ssh/id_rsa.pub`. This will be used to log in as the new user.
+    - `new_user_ssh_key`: Your public SSH key. This will be the **only** way to log in as the new user.
     - `ssh_port`: The port for SSH (defaults to `22`).
-    - `webhook_secret`: A secret string for securing the GitHub webhook. It is recommended to generate a long, random string for this value (e.g., using `openssl rand -hex 32` or a password manager).
+    - `webhook_secret`: A secret string for securing the GitHub webhook.
     - `status_port`: The port for the service status webpage (defaults to `5001`).
 
-3.  **Run the Playbook:**
-    Execute the main playbook to set up the server:
+3.  **Run the Setup Playbook:**
+    Execute the `setup.yml` playbook. You will be prompted for the root user's password.
     ```bash
-    ansible-playbook -i inventory playbook.yml --ask-pass --ask-become-pass
+    ansible-playbook -i inventory setup.yml --ask-pass --ask-become-pass
     ```
-    After this playbook completes, you should log in to your server using the new user and SSH key.
+    The playbook will pause at the end and provide instructions for the next step. Follow them before proceeding.
 
-4.  **Update Inventory for Subsequent Runs:**
-    After the initial setup, root login is disabled, and SSH password authentication is turned off. For all subsequent Ansible runs, you must update your `inventory` file to connect as the `new_user` with your SSH key.
+### Step 2: Deploying an Application
 
-    Modify your `inventory` file like this:
+After the initial setup is complete, you can deploy one or more applications by running the `deploy.yml` playbook. This should be run as the new administrative user created in Step 1.
+
+1.  **Update Your Inventory:**
+    Modify your `inventory` file to connect as the new administrative user you just created. Password authentication will be disabled, so you must use your SSH key.
     ```ini
     [servers]
-    your_server_ip ansible_user=your_new_user ansible_ssh_private_key_file=/path/to/your/private_key -e "ansible_port=your_ssh_port"
+    your_server_ip ansible_user=your_new_user ansible_ssh_private_key_file=/path/to/your/private_key ansible_port=your_ssh_port
     ```
-    Replace `your_new_user` with the value of `new_user`, `/path/to/your/private_key` with the path to your SSH private key, and `your_ssh_port` with the value of `ssh_port` if you changed it from the default 22.
 
----
-
-## 2. Deploying an Application
-This section details how to deploy your web application using Docker Compose and set up automated deployments via GitHub webhooks.
-
-For each application you deploy, a dedicated, non-login system user will be created based on the repository name. This provides strong security and isolation between your applications.
-
-### Steps
-
-1.  **Configure Application Variables:**
+2.  **Configure Application Variables:**
     Open `app_deployment/vars/main.yml` and configure your application's settings:
-    - `app_repo`: The Git repository URL of your application (e.g., `https://github.com/user/my-cool-app.git`). The user `my-cool-app` will be created automatically.
+    - `app_repo`: The Git repository URL of your application (e.g., `https://github.com/user/my-cool-app.git`).
     - `app_domain_name`: The domain name that will point to your application.
-    - `app_ports`: A list of environment variable names that your `docker-compose.yml` expects for port mappings. For each name in this list, the playbook will find a free host port and provide it as an environment variable. **`APP_PORT` is mandatory** as it is used by the Nginx reverse proxy.
+    - `app_ports`: A list of environment variable names that your `docker-compose.yml` expects for port mappings. **`APP_PORT` is mandatory** as it is used by the Nginx reverse proxy.
 
-      Example:
-      ```yaml
-      app_ports:
-        - APP_PORT
-        - PHPMYADMIN_PORT
-      ```
+3.  **Point DNS Records:**
+    Ensure that the A record for your application's domain in your DNS settings points to the IP address of your server.
 
-2.  **Prepare Your `docker-compose.yml`:**
-    Your application's `docker-compose.yml` must be structured to use the environment variables defined in `app_ports`.
-
-    - **Web Service:** Use the `${APP_PORT}` environment variable for the host port mapping.
-    - **Other Services (for VPN access):** Use their corresponding environment variables (e.g., `${PHPMYADMIN_PORT}`).
-    - **Internal Services:** Services that do not need to be accessed from outside the Docker network should not have a `ports` section.
-
-    Here is an example `docker-compose.yml` with a web server, a database, and phpMyAdmin:
-    ```yaml
-    version: '3.8'
-    services:
-      web:
-        image: my-web-image
-        restart: always
-        ports:
-          - "${APP_PORT:-80}:80"
-        environment:
-          # The web app connects to the database using the service name 'db'
-          - DATABASE_HOST=db
-
-      db:
-        image: postgres:13
-        restart: always
-        volumes:
-          - db_data:/var/lib/postgresql/data
-        environment:
-          - POSTGRES_PASSWORD=mysecretpassword
-
-      phpmyadmin:
-        image: phpmyadmin/phpmyadmin:latest
-        restart: always
-        ports:
-          - "${PHPMYADMIN_PORT:-8080}:80"
-        environment:
-          - PMA_HOST=db
-          - PMA_PORT=5432
-          - PMA_USER=postgres
-          - PMA_PASSWORD=mysecretpassword
-
-    volumes:
-      db_data:
-    ```
-    *(Note: The `:-8080` part provides a default host port for local development if the environment variable is not set.)*
-
-3.  **Secret Management with `.env.example`:**
-    If your application repository contains a `.env.example` file, the playbook will automatically detect it. For each variable defined in this file, Ansible will prompt you to enter a value during the playbook run. These values will then be used to create a `.env` file in your application's directory (`/home/{{ app_user }}/app/.env`), which Docker Compose will automatically pick up. This ensures your sensitive application secrets are not hardcoded in your repository or Ansible playbooks.
-
-    **Important Note for Webhook Deployments:** If new keys are added to your `.env.example` file, a webhook-triggered deployment will **fail**. This is because new secrets require interactive input. To resolve this, you must manually run the `ansible-playbook` from your control machine, specifically targeting the `app_deployment` role, which will prompt you for the new secret values. Once the `.env` file is updated, subsequent webhook deployments will proceed normally.
-
-4.  **Point A Records:**
-    Before running the playbook, ensure that the A record for `{{ app_domain_name }}` (and `www.{{ app_domain_name }}` if applicable) in your DNS settings points to the IP address of your server.
-
-5.  **Run the Playbook Again:**
-    Execute the main playbook again. This time, it will create the application user, clone the repository, and deploy your application.
+4.  **Run the Deployment Playbook:**
+    Execute the `deploy.yml` playbook.
     ```bash
-    ansible-playbook -i inventory playbook.yml
+    ansible-playbook -i inventory deploy.yml
     ```
+    If your application's repository contains a `.env.example` file, Ansible will prompt you to enter values for each variable.
 
-6.  **Set up the GitHub Webhook:**
+5.  **Set up the GitHub Webhook:**
     To enable automatic deployments on `git push`:
     - In your GitHub repository, go to **Settings > Webhooks > Add webhook**.
     - **Payload URL:** `http://<your_server_ip>:5000/webhook`
@@ -153,46 +79,44 @@ For each application you deploy, a dedicated, non-login system user will be crea
 
 ---
 
-## 3. Managing VPN Access
-This section explains how to manage access to your server's internal services using the WireGuard VPN.
+### Other Playbooks
 
-### Steps
+#### Managing VPN Access (`add_client.yml`)
 
-1.  **Generate a Key Pair:**
-    On your client machine (e.g., your laptop or phone), generate a new WireGuard key pair.
-    - **Linux/macOS:** `wg genkey | tee privatekey | wg pubkey > publickey`
-    - **Windows/Mobile:** Use the WireGuard app to create a new tunnel, which will generate a key pair.
+This playbook adds a new client to the WireGuard VPN.
 
-2.  **Configure Client Variables:**
-    Open `wireguard_add_client/vars/main.yml` and add the new client's details:
-    - `client_name`: A unique name for the client (e.g., `mylaptop`).
-    - `client_public_key`: The public key you generated in the previous step.
-
-3.  **Run the `add_client` Playbook:**
+1.  **Generate a Key Pair:** On your client machine, generate a new WireGuard key pair.
+2.  **Configure Client Variables:** Open `wireguard_add_client/vars/main.yml` and set `client_name` and `client_public_key`.
+3.  **Run the Playbook:**
     ```bash
     ansible-playbook -i inventory add_client.yml
     ```
-    This will generate a `<client_name>.conf` file in the project root.
+    This will generate a `<client_name>.conf` file in the project root. Import this into your WireGuard client after adding your private key.
 
-4.  **Configure Your Client:**
-    - Open the generated `<client_name>.conf` file.
-    - Replace `YOUR_CLIENT_PRIVATE_KEY` with the private key you generated in step 1.
-    - Import this modified file into your WireGuard client and activate the connection.
+#### Removing an Application (`remove_app.yml`)
 
----
+This playbook removes a deployed application, including the user, files, and Nginx configuration.
 
-## 4. Service Status Webpage
-This playbook automatically creates a simple webpage that lists all deployed services and provides clickable links to access them.
-
-This page is accessible **via VPN only** at `http://<your_server_ip>:5001`.
-
----
-
-## 5. Removing an Application
-To remove a deployed application, you can use the `remove_app.yml` playbook. This will stop the application's containers, remove the user and their files, and delete the Nginx configuration.
-
-You must provide the application's repository URL as an extra variable.
+-   You must provide the application's repository URL as an extra variable.
+-   Run this playbook as your administrative user (`new_user`).
 
 ```bash
-ansible-playbook -i inventory remove_app.yml -e "app_repo=https://github.com/user/my-cool-app.git" -e "domain_suffix=your_domain.com"
+ansible-playbook -i inventory remove_app.yml -e "app_repo=https://github.com/user/my-cool-app.git"
 ```
+
+---
+### Technical Details
+
+#### Application Isolation
+
+For each application you deploy, a dedicated, non-login system user will be created based on the repository name. The application is cloned into this user's home directory, and rootless Docker is used to run the application's containers. This provides strong security and isolation between your applications.
+
+#### Secret Management
+
+If your application repository contains a `.env.example` file, the `deploy.yml` playbook will automatically detect it and interactively prompt you for each variable. This creates a `.env` file in the application directory, which is used by Docker Compose. This ensures your sensitive application secrets are not hardcoded.
+
+**Note:** If new keys are added to `.env.example`, a webhook-triggered deployment will fail. You must manually run `ansible-playbook -i inventory deploy.yml` to be prompted for the new secret values.
+
+#### Service Status Webpage
+
+A simple status page is created that lists all deployed services and provides clickable links to access them. This page is accessible **via VPN only** at `http://<your_server_ip>:{{ status_port }}`.

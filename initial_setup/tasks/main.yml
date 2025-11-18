@@ -138,3 +138,17 @@ APT::Periodic::Unattended-Upgrade "1";'
 
 - name: Include webhook tasks
   ansible.builtin.include_tasks: webhook.yml
+
+- name: "Pause and provide instructions for deployment"
+  ansible.builtin.pause:
+    prompt: |
+      Initial setup is complete. The new user '{{ new_user }}' has been created with sudo privileges.
+
+      ACTION REQUIRED:
+      1. Update your Ansible inventory to use '{{ new_user }}' for this host.
+         For example, change 'ansible_user=root' to 'ansible_user={{ new_user }}'.
+      2. Re-run Ansible to deploy applications using the new playbook:
+
+         ansible-playbook deploy.yml
+
+      Press Enter to continue (and end this playbook run)...
