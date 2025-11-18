@@ -1,35 +1,35 @@
 ---
-# tasks file for rootless_docker
-- name: Get new_user uid
+# tasks file for rootless_docker setup for app_user
+- name: Get app_user uid
   ansible.builtin.command:
-    cmd: "id -u {{ new_user }}"
-  register: new_user_uid
+    cmd: "id -u {{ app_user }}"
+  register: app_user_uid
   changed_when: false
 
-- name: Check if linger file exists for new_user
+- name: Check if linger file exists for app_user
   ansible.builtin.stat:
-    path: "/var/lib/systemd/linger/{{ new_user }}"
+    path: "/var/lib/systemd/linger/{{ app_user }}"
   register: linger_file
   become: yes
 
-- name: Enable lingering for new_user
+- name: Enable lingering for app_user
   ansible.builtin.command:
-    cmd: "loginctl enable-linger {{ new_user }}"
+    cmd: "loginctl enable-linger {{ app_user }}"
   when: not linger_file.stat.exists
   become: yes
 
-- name: "Set up subuid for {{ new_user }}"
+- name: "Set up subuid for {{ app_user }}"
   ansible.builtin.lineinfile:
     path: /etc/subuid
-    line: "{{ new_user }}:100000:65536"
+    line: "{{ app_user }}:200000:65536"
     create: yes
     mode: '0644'
   become: yes
 
-- name: "Set up subgid for {{ new_user }}"
+- name: "Set up subgid for {{ app_user }}"
   ansible.builtin.lineinfile:
     path: /etc/subgid
-    line: "{{ new_user }}:100000:65536"
+    line: "{{ app_user }}:200000:65536"
     create: yes
     mode: '0644'
   become: yes
@@ -43,10 +43,10 @@
 - name: Download rootless docker install script
   ansible.builtin.get_url:
     url: https://get.docker.com/rootless
-    dest: "/home/{{ new_user }}/get-docker-rootless.sh"
+    dest: "/home/{{ app_user }}/get-docker-rootless.sh"
     mode: '0755'
   become: yes
-  become_user: "{{ new_user }}"
+  become_user: "{{ app_user }}"
 
 - name: Create AppArmor profile for RootlessKit
   ansible.builtin.copy:
@@ -55,13 +55,13 @@
       abi <abi/4.0>,
       include <tunables/global>
 
-      /home/{{ new_user }}/bin/rootlesskit flags=(unconfined) {
+      /home/{{ app_user }}/bin/rootlesskit flags=(unconfined) {
         userns,
 
         # Site-specific additions and overrides. See local/README for details.
-        include if exists <local/home.{{ new_user }}.bin.rootlesskit>
+        include if exists <local/home.{{ app_user }}.bin.rootlesskit>
       }
-    dest: "/etc/apparmor.d/home.{{ new_user }}.bin.rootlesskit"
+    dest: "/etc/apparmor.d/home.{{ app_user }}.bin.rootlesskit"
     owner: root
     group: root
     mode: '0644'
@@ -74,44 +74,44 @@
 
 - name: Install rootless docker
   ansible.builtin.command:
-    cmd: "/home/{{ new_user }}/get-docker-rootless.sh"
+    cmd: "/home/{{ app_user }}/get-docker-rootless.sh"
   become: yes
-  become_user: "{{ new_user }}"
+  become_user: "{{ app_user }}"
   environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ new_user_uid.stdout }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
 
-- name: Add Docker bin to PATH for {{ new_user }}
+- name: Add Docker bin to PATH for {{ app_user }}
   ansible.builtin.lineinfile:
-    path: "/home/{{ new_user }}/.bashrc"
-    line: "export PATH=/home/{{ new_user }}/bin:$PATH"
+    path: "/home/{{ app_user }}/.bashrc"
+    line: "export PATH=/home/{{ app_user }}/bin:$PATH"
     create: yes
   become: yes
-  become_user: "{{ new_user }}"
+  become_user: "{{ app_user }}"
 
-- name: Add DOCKER_HOST to environment for {{ new_user }}
+- name: Add DOCKER_HOST to environment for {{ app_user }}
   ansible.builtin.lineinfile:
-    path: "/home/{{ new_user }}/.bashrc"
-    line: "export DOCKER_HOST=unix:///run/user/{{ new_user_uid.stdout }}/docker.sock"
+    path: "/home/{{ app_user }}/.bashrc"
+    line: "export DOCKER_HOST=unix:///run/user/{{ app_user_uid.stdout }}/docker.sock"
     create: yes
   become: yes
-  become_user: "{{ new_user }}"
+  become_user: "{{ app_user }}"
 
 - name: Reload systemd user daemon
   ansible.builtin.systemd:
     scope: user
     daemon_reload: yes
   become: yes
-  become_user: "{{ new_user }}"
+  become_user: "{{ app_user }}"
   environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ new_user_uid.stdout }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
 
-- name: Start and enable rootless docker service for new_user
+- name: Start and enable rootless docker service for app_user
   ansible.builtin.systemd:
     scope: user
     name: docker.service
     enabled: yes
     state: started
   become: yes
-  become_user: "{{ new_user }}"
+  become_user: "{{ app_user }}"
   environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ new_user_uid.stdout }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"

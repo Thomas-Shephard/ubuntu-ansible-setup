@@ -1,9 +1,10 @@
 ---
 # tasks file for webhook
 - name: Install Flask
-  ansible.builtin.pip:
-    name: Flask
-    executable: pip3
+  ansible.builtin.apt:
+    name: python3-flask
+    state: present
+  become: yes
 
 - name: Create webhook listener script
   ansible.builtin.template:

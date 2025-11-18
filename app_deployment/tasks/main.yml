@@ -1,5 +1,25 @@
 ---
 # tasks file for app_deployment
+- name: "Fail if app_repo is not set"
+  ansible.builtin.fail:
+    msg: "The 'app_repo' variable is set to the default placeholder 'your_app_repo.git'. Please provide a valid Git repository URL in app_deployment/vars/main.yml."
+  when: app_repo == 'your_app_repo.git'
+  run_once: true
+
+- name: Check if the git repository is valid and accessible
+  ansible.builtin.command:
+    cmd: "git ls-remote {{ app_repo }}"
+  register: git_check
+  changed_when: false
+  failed_when: false # We handle the failure manually
+  run_once: true
+
+- name: Fail if git repository is not accessible
+  ansible.builtin.fail:
+    msg: "The git repository '{{ app_repo }}' is not accessible. Please check the URL and access rights."
+  when: git_check.rc != 0
+  run_once: true
+
 - name: Validate that APP_PORT is defined in app_ports
   ansible.builtin.fail:
     msg: "The 'app_ports' list in app_deployment/vars/main.yml must contain 'APP_PORT' for Nginx configuration."
@@ -16,62 +36,14 @@
     system: yes
     create_home: yes
 
-- name: Get app_user uid
-  ansible.builtin.command:
-    cmd: "id -u {{ app_user }}"
-  register: app_user_uid
-  changed_when: false
-
-- name: Download rootless docker install script
-  ansible.builtin.get_url:
-    url: https://get.docker.com/rootless
-    dest: "/home/{{ app_user }}/get-docker-rootless.sh"
-    mode: '0755'
-  become: yes
-  become_user: "{{ app_user }}"
-
-- name: Install rootless docker
-  ansible.builtin.command:
-    cmd: "/home/{{ app_user }}/get-docker-rootless.sh"
-  become: yes
-  become_user: "{{ app_user }}"
-  environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
-
-- name: Add Docker bin to PATH
-  ansible.builtin.lineinfile:
-    path: "/home/{{ app_user }}/.bashrc"
-    line: "export PATH=/home/{{ app_user }}/bin:$PATH"
-    create: yes
-  become: yes
-  become_user: "{{ app_user }}"
-
-- name: Add DOCKER_HOST to environment
-  ansible.builtin.lineinfile:
-    path: "/home/{{ app_user }}/.bashrc"
-    line: "export DOCKER_HOST=unix:///run/user/{{ app_user_uid.stdout }}/docker.sock"
-    create: yes
-  become: yes
-  become_user: "{{ app_user }}"
-
-- name: Enable user lingering for app_user
-  ansible.builtin.command:
-    cmd: "loginctl enable-linger {{ app_user }}"
-
-- name: Start rootless docker service for app_user
-  ansible.builtin.systemd:
-    scope: user
-    name: docker
-    enabled: yes
-    state: started
-  become: yes
-  become_user: "{{ app_user }}"
-  environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
+- name: Set up rootless docker for app user
+  ansible.builtin.include_tasks: rootless_docker.yml
 
 - name: Find available ports for the application
   ansible.builtin.shell: |
     comm -23 <(seq 8080 8180 | sort) <(ss -Htan | awk '{print $4}' | awk -F':' '{print $NF}' | sort -u) | head -n {{ app_ports | length }}
+  args:
+    executable: /bin/bash
   register: next_available_ports
   changed_when: false
 

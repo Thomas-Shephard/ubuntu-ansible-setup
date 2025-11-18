@@ -3,9 +3,9 @@ Description=Webhook Listener
 After=network.target
 
 [Service]
-User={{ app_user }}
-WorkingDirectory=/home/{{ app_user }}
-ExecStart=/usr/bin/python3 /home/{{ app_user }}/webhook_listener.py
+User={{ new_user }}
+WorkingDirectory=/home/{{ new_user }}
+ExecStart=/usr/bin/python3 /home/{{ new_user }}/webhook_listener.py
 Restart=always
 
 [Install]
