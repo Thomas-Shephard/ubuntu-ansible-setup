@@ -1,7 +1,7 @@
 ---
 # vars file for initial_setup
-new_user: placeholder_user
-new_user_password: placeholder_password
+new_user: "placeholder_user"
+new_user_password: "placeholder_password"
 new_user_ssh_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQD..."
 ssh_port: 22
 webhook_secret: "your_webhook_secret"
