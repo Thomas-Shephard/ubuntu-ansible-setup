@@ -13,3 +13,9 @@
   loop:
     - http
     - https
+
+- name: Ensure Nginx service is enabled and started
+  ansible.builtin.systemd:
+    name: nginx
+    enabled: yes
+    state: started

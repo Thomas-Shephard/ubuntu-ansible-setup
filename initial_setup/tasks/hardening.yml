@@ -30,7 +30,7 @@
     mode: '0644'
   notify: restart fail2ban
 
-- name: Ensure fail2ban is running and enabled
+- name: Ensure fail2ban service is enabled and started
   ansible.builtin.service:
     name: fail2ban
     state: started

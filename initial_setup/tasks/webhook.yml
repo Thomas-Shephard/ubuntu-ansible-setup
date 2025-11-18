@@ -38,8 +38,9 @@
     port: "{{ webhook_port }}"
     proto: tcp
 
-- name: Enable webhook service
+- name: Ensure webhook service is enabled and started
   ansible.builtin.systemd:
     name: webhook
     enabled: yes
+    state: started
     daemon_reload: yes

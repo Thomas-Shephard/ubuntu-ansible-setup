@@ -22,7 +22,7 @@
     dest: /var/www/status/apps.json
     mode: '0644'
 
-- name: Enable and start status service
+- name: Ensure status service is enabled and started
   ansible.builtin.systemd:
     name: status
     enabled: yes
