@@ -4,6 +4,10 @@
   ansible.builtin.apt:
     name: nginx
     state: present
+  register: apt_install_nginx_result
+  until: apt_install_nginx_result is successful
+  retries: 10
+  delay: 10
 
 - name: Allow HTTP and HTTPS through UFW
   community.general.ufw:

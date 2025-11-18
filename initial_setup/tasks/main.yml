@@ -26,6 +26,10 @@
       - uidmap
       - docker-compose
     state: present
+  register: apt_install_essential_result
+  until: apt_install_essential_result is successful
+  retries: 10
+  delay: 10
 
 - name: Deploy MOTD
   ansible.builtin.template:

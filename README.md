@@ -54,32 +54,25 @@ This playbook performs the initial, one-time server setup. It hardens the server
 
 ### Step 2: Deploying an Application
 
-After the initial setup is complete, you can deploy one or more applications by running the `deploy.yml` playbook. This should be run as the new administrative user created in Step 1.
+After the initial setup is complete, you can deploy one or more applications by running the `deploy.yml` playbook.
 
-1.  **Update Your Inventory:**
-    Modify your `inventory` file to connect as the new administrative user `new_user` you just created. Password authentication will be disabled, so you must use your SSH key.
-    ```ini
-    [servers]
-    your_server_ip ansible_user=new_user ansible_ssh_private_key_file=/path/to/your/private_key ansible_port=your_ssh_port
-    ```
-
-2.  **Configure Application Variables:**
+1. **Configure Application Variables:**
     Open `app_deployment/vars/main.yml` and configure your application's settings:
     - `app_repo`: The Git repository URL of your application (e.g., `https://github.com/user/my-cool-app.git`).
     - `app_domain_name`: The domain name that will point to your application.
     - `app_ports`: A list of environment variable names that your `docker-compose.yml` expects for port mappings. **`APP_PORT` is mandatory** as it is used by the Nginx reverse proxy.
 
-3.  **Point DNS Records:**
+2. **Point DNS Records:**
     Ensure that the A record for your application's domain in your DNS settings points to the IP address of your server.
 
-4.  **Run the Deployment Playbook:**
+3. **Run the Deployment Playbook:**
     Execute the `deploy.yml` playbook.
     ```bash
     ansible-playbook -i inventory deploy.yml
     ```
     If your application's repository contains a `.env.example` file, Ansible will prompt you to enter values for each variable.
 
-5.  **Set up the GitHub Webhook:**
+4. **Set up the GitHub Webhook:**
     To enable automatic deployments on `git push`:
     - In your GitHub repository, go to **Settings > Webhooks > Add webhook**.
     - **Payload URL:** `http://<your_server_ip>:5000/webhook`

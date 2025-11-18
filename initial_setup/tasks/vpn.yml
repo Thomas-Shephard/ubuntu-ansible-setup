@@ -4,6 +4,10 @@
   ansible.builtin.apt:
     name: wireguard
     state: present
+  register: apt_install_wireguard_result
+  until: apt_install_wireguard_result is successful
+  retries: 10
+  delay: 10
 
 - name: Allow WireGuard through UFW
   community.general.ufw:

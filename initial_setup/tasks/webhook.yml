@@ -9,6 +9,10 @@
       - python3-setuptools
     state: present
   become: yes
+  register: apt_install_python_result
+  until: apt_install_python_result is successful
+  retries: 10
+  delay: 10
 
 - name: Create webhook listener script
   ansible.builtin.template:
