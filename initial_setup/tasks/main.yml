@@ -136,8 +136,5 @@ APT::Periodic::Unattended-Upgrade "1";'
 - name: Include vpn tasks
   ansible.builtin.include_tasks: vpn.yml
 
-- name: Include rootless_docker tasks
-  ansible.builtin.include_tasks: rootless_docker.yml
-
 - name: Include webhook tasks
   ansible.builtin.include_tasks: webhook.yml
