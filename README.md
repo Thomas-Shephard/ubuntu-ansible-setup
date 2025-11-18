@@ -33,6 +33,8 @@ This playbook performs the initial, one-time server setup. It hardens the server
     - `new_user_ssh_key`: Your public SSH key. This will be the **only** way to log in as the new user.
     - `ssh_port`: The port for SSH (defaults to `22`).
     - `webhook_secret`: A secret string for securing the GitHub webhook.
+    - `webhook_port`: The port for the webhook listener (defaults to `5000`).
+    - `vpn_port`: The UDP port for WireGuard (defaults to `51820`).
     - `status_port`: The port for the service status webpage (defaults to `5001`).
 
 3.  **Run the Setup Playbook:**
@@ -40,26 +42,25 @@ This playbook performs the initial, one-time server setup. It hardens the server
     ```bash
     ansible-playbook -i inventory setup.yml --ask-pass --ask-become-pass
     ```
-    Initial setup is complete. The new user '{{ new_user }}' has been created with sudo privileges.
+    Initial setup is complete. The new user `new_user` has been created with sudo privileges.
 
-    **ACTION REQUIRED:**
-    1. Update your Ansible inventory to use '{{ new_user }}' for this host.
-       For example, change 'ansible_user=root' to 'ansible_user={{ new_user }}'.
-    2. Re-run Ansible to deploy applications using the new playbook:
+4.  **Update Inventory for New User:**
+    After the initial setup, password authentication for the new user is disabled. You must update your `inventory` file to connect as the new administrative user. Ensure you specify your SSH private key file and the correct SSH port.
 
-       `ansible-playbook deploy.yml`
-
-    Follow these instructions before proceeding to Step 2.
+    ```ini
+    [servers]
+    your_server_ip ansible_user=new_user ansible_ssh_private_key_file=/path/to/your/private_key ansible_port=your_ssh_port
+    ```
 
 ### Step 2: Deploying an Application
 
 After the initial setup is complete, you can deploy one or more applications by running the `deploy.yml` playbook. This should be run as the new administrative user created in Step 1.
 
 1.  **Update Your Inventory:**
-    Modify your `inventory` file to connect as the new administrative user you just created. Password authentication will be disabled, so you must use your SSH key.
+    Modify your `inventory` file to connect as the new administrative user `new_user` you just created. Password authentication will be disabled, so you must use your SSH key.
     ```ini
     [servers]
-    your_server_ip ansible_user=your_new_user ansible_ssh_private_key_file=/path/to/your/private_key ansible_port=your_ssh_port
+    your_server_ip ansible_user=new_user ansible_ssh_private_key_file=/path/to/your/private_key ansible_port=your_ssh_port
     ```
 
 2.  **Configure Application Variables:**
@@ -118,7 +119,7 @@ ansible-playbook -i inventory remove_app.yml -e "app_repo=https://github.com/use
 
 #### Application Isolation
 
-For each application you deploy, a dedicated, non-login system user will be created based on the repository name. The application is cloned into this user's home directory, and rootless Docker is used to run the application's containers. This provides strong security and isolation between your applications.
+For each application you deploy, a dedicated, non-login system user will be created based on the repository name. The application is cloned into this `new_user`'s home directory, and rootless Docker is used to run the application's containers. This provides strong security and isolation between your applications.
 
 #### Secret Management
 
