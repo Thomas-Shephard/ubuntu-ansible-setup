@@ -28,3 +28,9 @@
     enabled: yes
     state: started
     daemon_reload: yes
+
+- name: Allow status server through UFW
+  community.general.ufw:
+    rule: allow
+    port: "{{ status_port }}"
+    proto: tcp

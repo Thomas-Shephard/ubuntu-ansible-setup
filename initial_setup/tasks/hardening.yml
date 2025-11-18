@@ -13,20 +13,10 @@
       - unattended-upgrades
     state: present
 
-- name: Allow SSH, HTTP, and HTTPS through UFW
+- name: Allow SSH through UFW
   community.general.ufw:
     rule: allow
-    port: "{{ item }}"
-    proto: tcp
-  loop:
-    - "{{ ssh_port }}"
-    - http
-    - https
-
-- name: Allow Status Server through UFW
-  community.general.ufw:
-    rule: allow
-    port: "{{ status_port }}"
+    port: "{{ ssh_port }}"
     proto: tcp
 
 - name: Enable UFW

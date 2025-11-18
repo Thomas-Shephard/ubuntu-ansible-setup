@@ -4,3 +4,12 @@
   ansible.builtin.apt:
     name: nginx
     state: present
+
+- name: Allow HTTP and HTTPS through UFW
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - http
+    - https
