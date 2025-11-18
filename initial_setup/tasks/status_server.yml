@@ -1,0 +1,30 @@
+---
+# tasks file for status server setup
+- name: Create status server directory
+  ansible.builtin.file:
+    path: /var/www/status
+    state: directory
+    mode: '0755'
+
+- name: Template status server script
+  ansible.builtin.template:
+    src: status_server.py.j2
+    dest: /var/www/status/status_server.py
+
+- name: Template status service file
+  ansible.builtin.template:
+    src: status.service.j2
+    dest: /etc/systemd/system/status.service
+
+- name: Create initial apps.json
+  ansible.builtin.copy:
+    content: "{}"
+    dest: /var/www/status/apps.json
+    mode: '0644'
+
+- name: Enable and start status service
+  ansible.builtin.systemd:
+    name: status
+    enabled: yes
+    state: started
+    daemon_reload: yes

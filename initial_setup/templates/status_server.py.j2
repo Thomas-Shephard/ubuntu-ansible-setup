@@ -53,5 +53,5 @@ def status():
     return render_template_string(html, apps=apps, ansible_host=request.host.split(':')[0])
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001)
+    app.run(host='0.0.0.0', port={{ status_port }})
 

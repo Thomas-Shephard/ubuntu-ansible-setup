@@ -1,134 +1,10 @@
 ---
 # tasks file for initial_setup
-- name: Update apt cache
-  ansible.builtin.apt:
-    update_cache: yes
-    cache_valid_time: 3600
+- name: Include hardening tasks
+  ansible.builtin.include_tasks: hardening.yml
 
-- name: Install essential packages
-  ansible.builtin.apt:
-    name:
-      - apt-transport-https
-      - ca-certificates
-      - curl
-      - software-properties-common
-      - python3-pip
-      - virtualenv
-      - python3-setuptools
-      - ufw
-      - fail2ban
-      - unattended-upgrades
-      - dbus-user-session
-      - uidmap
-      - docker-compose
-    state: present
-
-- name: Allow SSH, HTTP, HTTPS, and Webhook through UFW
-  community.general.ufw:
-    rule: allow
-    port: "{{ item }}"
-    proto: tcp
-  loop:
-    - "{{ ssh_port }}"
-    - '5000'
-    - http
-    - https
-
-- name: Allow WireGuard through UFW
-  community.general.ufw:
-    rule: allow
-    port: '51820'
-    proto: udp
-
-- name: Enable UFW
-  community.general.ufw:
-    state: enabled
-
-- name: Configure fail2ban jail.local
-  ansible.builtin.template:
-    src: jail.local.j2
-    dest: /etc/fail2ban/jail.local
-    mode: '0644'
-  notify: restart fail2ban
-
-- name: Ensure fail2ban is running and enabled
-  ansible.builtin.service:
-    name: fail2ban
-    state: started
-    enabled: yes
-
-- name: Configure unattended-upgrades
-  ansible.builtin.template:
-    src: 50unattended-upgrades.j2
-    dest: /etc/apt/apt.conf.d/50unattended-upgrades
-    mode: '0644'
-
-- name: Enable unattended-upgrades
-  ansible.builtin.copy:
-    content: 'APT::Periodic::Update-Package-Lists "1";
-APT::Periodic::Unattended-Upgrade "1";'
-    dest: /etc/apt/apt.conf.d/20auto-upgrades
-    mode: '0644'
-
-- name: Create status server directory
-  ansible.builtin.file:
-    path: /var/www/status
-    state: directory
-    mode: '0755'
-
-- name: Template status server script
-  ansible.builtin.template:
-    src: status_server.py.j2
-    dest: /var/www/status/status_server.py
-
-- name: Template status service file
-  ansible.builtin.template:
-    src: status.service.j2
-    dest: /etc/systemd/system/status.service
-
-- name: Create initial apps.json
-  ansible.builtin.copy:
-    content: "{}"
-    dest: /var/www/status/apps.json
-    mode: '0644'
-
-- name: Enable and start status service
-  ansible.builtin.systemd:
-    name: status
-    enabled: yes
-    state: started
-    daemon_reload: yes
-
-- name: Create new user
-  ansible.builtin.user:
-    name: "{{ new_user }}"
-    password: "{{ new_user_password | password_hash('sha512') }}" # Hash the password
-    shell: /bin/bash
-    groups: sudo
-    append: yes
-    state: present
-
-- name: Add new user to sudoers (without password)
-  ansible.builtin.lineinfile:
-    path: /etc/sudoers.d/{{ new_user }}
-    create: yes
-    mode: '0440'
-    line: "{{ new_user }} ALL=(ALL) NOPASSWD: ALL"
-    validate: /usr/sbin/visudo -cf %s
-
-- name: Set authorized key for new user
-  ansible.builtin.authorized_key:
-    user: "{{ new_user }}"
-    state: present
-    key: "{{ new_user_ssh_key }}"
-
-- name: Create .ansible/tmp directory for new_user
-  ansible.builtin.file:
-    path: "/home/{{ new_user }}/.ansible/tmp"
-    state: directory
-    owner: "{{ new_user }}"
-    group: "{{ new_user }}"
-    mode: '0700'
+- name: Include status_server tasks
+  ansible.builtin.include_tasks: status_server.yml
 
 - name: Include reverse_proxy tasks
   ansible.builtin.include_tasks: reverse_proxy.yml
@@ -139,16 +15,20 @@ APT::Periodic::Unattended-Upgrade "1";'
 - name: Include webhook tasks
   ansible.builtin.include_tasks: webhook.yml
 
-- name: "Pause and provide instructions for deployment"
-  ansible.builtin.pause:
-    prompt: |
-      Initial setup is complete. The new user '{{ new_user }}' has been created with sudo privileges.
+- name: Install remaining essential packages
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - software-properties-common
+      - dbus-user-session
+      - uidmap
+      - docker-compose
+    state: present
 
-      ACTION REQUIRED:
-      1. Update your Ansible inventory to use '{{ new_user }}' for this host.
-         For example, change 'ansible_user=root' to 'ansible_user={{ new_user }}'.
-      2. Re-run Ansible to deploy applications using the new playbook:
-
-         ansible-playbook deploy.yml
-
-      Press Enter to continue (and end this playbook run)...
+- name: Deploy MOTD
+  ansible.builtin.template:
+    src: 99-ansible-motd.j2
+    dest: /etc/update-motd.d/99-ansible-motd
+    mode: '0755'

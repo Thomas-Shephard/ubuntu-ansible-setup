@@ -1,0 +1,83 @@
+---
+# tasks file for initial_setup hardening
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install hardening packages
+  ansible.builtin.apt:
+    name:
+      - ufw
+      - fail2ban
+      - unattended-upgrades
+    state: present
+
+- name: Allow SSH, HTTP, and HTTPS through UFW
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - "{{ ssh_port }}"
+    - http
+    - https
+
+- name: Allow Status Server through UFW
+  community.general.ufw:
+    rule: allow
+    port: "{{ status_port }}"
+    proto: tcp
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+
+- name: Configure fail2ban jail.local
+  ansible.builtin.template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    mode: '0644'
+  notify: restart fail2ban
+
+- name: Ensure fail2ban is running and enabled
+  ansible.builtin.service:
+    name: fail2ban
+    state: started
+    enabled: yes
+
+- name: Configure unattended-upgrades
+  ansible.builtin.template:
+    src: 50unattended-upgrades.j2
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    mode: '0644'
+
+- name: Enable unattended-upgrades
+  ansible.builtin.copy:
+    content: 'APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";'
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: '0644'
+
+- name: Create new user
+  ansible.builtin.user:
+    name: "{{ new_user }}"
+    password: "{{ new_user_password | password_hash('sha512') }}" # Hash the password
+    shell: /bin/bash
+    groups: sudo
+    append: yes
+    state: present
+
+- name: Add new user to sudoers (without password)
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers.d/{{ new_user }}
+    create: yes
+    mode: '0440'
+    line: "{{ new_user }} ALL=(ALL) NOPASSWD: ALL"
+    validate: /usr/sbin/visudo -cf %s
+
+- name: Set authorized key for new user
+  ansible.builtin.authorized_key:
+    user: "{{ new_user }}"
+    state: present
+    key: "{{ new_user_ssh_key }}"

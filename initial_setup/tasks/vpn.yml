@@ -5,6 +5,12 @@
     name: wireguard
     state: present
 
+- name: Allow WireGuard through UFW
+  community.general.ufw:
+    rule: allow
+    port: "{{ vpn_port }}"
+    proto: udp
+
 - name: Create WireGuard configuration directory
   ansible.builtin.file:
     path: /etc/wireguard

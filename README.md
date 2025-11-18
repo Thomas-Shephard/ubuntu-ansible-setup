@@ -7,7 +7,7 @@ This project provides a set of Ansible playbooks to automate the setup and confi
 - **Ansible:** Must be installed on your local machine.
   **Note:** Ansible does not support Windows as a control node. If you are on Windows, it is recommended to use Windows Subsystem for Linux (WSL) to run Ansible.
 - **Ubuntu:** A fresh installation of Ubuntu 24.04 or later.
-- **Root Access:** You will need root access to the server for the initial setup run.
+- **Initial Access:** You will need either direct root access or an account with `sudo` privileges on the server for the initial setup run.
 
 ---
 
@@ -20,10 +20,10 @@ This project uses a two-playbook workflow: `setup.yml` for initial server config
 This playbook performs the initial, one-time server setup. It hardens the server, installs necessary services (Nginx, WireGuard, etc.), and creates a new administrative user with `sudo` privileges.
 
 1.  **Create an Inventory File:**
-    Create a file named `inventory` in the root of this project with the IP address of your server. **You must connect as `root` for this first step.**
+    Create a file named `inventory` in the root of this project with the IP address of your server. **You must connect as `root` or a user with `sudo` privileges for this first step.**
     ```ini
     [servers]
-    your_server_ip ansible_user=root
+    your_server_ip ansible_user=your_initial_user
     ```
 
 2.  **Configure Server Variables:**
@@ -40,7 +40,16 @@ This playbook performs the initial, one-time server setup. It hardens the server
     ```bash
     ansible-playbook -i inventory setup.yml --ask-pass --ask-become-pass
     ```
-    The playbook will pause at the end and provide instructions for the next step. Follow them before proceeding.
+    Initial setup is complete. The new user '{{ new_user }}' has been created with sudo privileges.
+
+    **ACTION REQUIRED:**
+    1. Update your Ansible inventory to use '{{ new_user }}' for this host.
+       For example, change 'ansible_user=root' to 'ansible_user={{ new_user }}'.
+    2. Re-run Ansible to deploy applications using the new playbook:
+
+       `ansible-playbook deploy.yml`
+
+    Follow these instructions before proceeding to Step 2.
 
 ### Step 2: Deploying an Application
 
