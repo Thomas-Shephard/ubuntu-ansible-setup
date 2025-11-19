@@ -100,18 +100,24 @@
   become_user: "{{ app_user }}"
 
 - name: Read .env.example content
-  ansible.builtin.command:
-    cmd: "cat /home/{{ app_user }}/app/.env.example"
+  ansible.builtin.slurp:
+    src: "/home/{{ app_user }}/app/.env.example"
   register: env_example_content
   when: env_example_file.stat.exists
   become: yes
   become_user: "{{ app_user }}"
-  changed_when: false
 
-- name: Extract variable names from .env.example
+- name: Initialize env_vars_to_prompt
   ansible.builtin.set_fact:
-    env_vars_to_prompt: "{{ env_example_content.stdout_lines | select('match', '^[A-Z_]+ *=') | map('split', '=') | map(attribute=0) | list }}"
-  when: env_example_content.stdout_lines is defined
+    env_vars_to_prompt: []
+
+- name: Parse .env.example and prepare for prompting
+  ansible.builtin.set_fact:
+    env_vars_to_prompt: "{{ env_vars_to_prompt + [{'name': item.split('=')[0], 'default': item.split('=')[1], 'comment': ''}] }}"
+  loop: "{{ env_example_content.content | b64decode | split('\\n') }}"
+  when:
+    - "'=' in item"
+    - not item.strip().startswith('#')
 
 - name: Read existing .env file content
   ansible.builtin.slurp:
@@ -129,44 +135,77 @@
   ansible.builtin.set_fact:
     existing_env_values: {}
 
-- name: Parse existing .env file into dictionary
+- name: Create dictionary from existing .env file
   ansible.builtin.set_fact:
-    existing_env_values: "{{ existing_env_file_content.content | b64decode | splitlines | select('match', '^[A-Z_]+ *=') | map('split', '=', 1) | items2dict }}"
+    existing_env_values: |
+      {% set result = {} %}
+      {% for line in existing_env_file_content.content | b64decode | split('\\n') %}
+        {% if '=' in line %}
+          {% set parts = line.split('=', 1) %}
+          {% set _ = result.update({parts[0]: parts[1]}) %}
+        {% endif %}
+      {% endfor %}
+      {{ result }}
   when: existing_env_file_content.content is defined and existing_env_file_content.content | length > 0
 
-- name: Prompt for .env variables, reusing existing values
+- name: Determine effective defaults for .env variables
+  ansible.builtin.set_fact:
+    env_vars_processed: |
+      {{
+        env_vars_processed | default([]) +
+        [{
+          'name': item.name,
+          'comment': item.comment,
+          'effective_default': existing_env_values[item.name] | default(item.default, true)
+        }]
+      }}
+  loop: "{{ env_vars_to_prompt | from_yaml }}"
+  when: env_vars_to_prompt is defined and (env_vars_to_prompt | from_yaml | length > 0)
+
+
+
+- name: Prompt for .env variables
   ansible.builtin.pause:
-    prompt: "Enter value for {{ item }} (current: {{ existing_env_values[item] | default('') }})"
-    echo: no
-  register: prompt_results
-  loop: "{{ env_vars_to_prompt }}"
+    prompt: |
+      {% if item.comment %}
+      {{ item.comment }}
+      {% endif %}
+      Enter value for {{ item.name }}
+      (Press Enter to accept: {{ item.effective_default }})
+    # echo: no (removed to enable echoing of input)
+  loop: "{{ env_vars_processed | from_yaml if env_vars_processed is string else env_vars_processed }}"
   loop_control:
     loop_var: item
-  when: env_vars_to_prompt is defined and env_vars_to_prompt | length > 0 and not ansible_check_mode
+  register: prompt_results
+  when: env_vars_processed is defined and (env_vars_processed | from_yaml if env_vars_processed is string else env_vars_processed | length > 0) and not ansible_check_mode
 
 - name: Process prompted .env values
   ansible.builtin.set_fact:
-    user_env_inputs_processed: "{{ user_env_inputs_processed | default({}) | combine({item.item: (item.user_input if item.user_input != '' else existing_env_values[item.item] | default(''))}) }}"
+    user_env_inputs_processed: |
+      {{
+        user_env_inputs_processed | default({}) | combine({
+          item.item.name: item.user_input if item.user_input != ''
+          else item.item.effective_default
+        })
+      }}
   loop: "{{ prompt_results.results }}"
-  loop_control:
-    loop_var: item
   when: prompt_results.results is defined
 
-- name: Create .env file content from prompts
+- name: Create .env file content
   ansible.builtin.set_fact:
-    env_file_lines: "{{ env_file_lines | default([]) + ['%s=%s' | format(item.key, item.value)] }}"
+    env_file_content: "{{ env_file_content | default('') + item.key + '=' + item.value + '\n' }}"
   loop: "{{ user_env_inputs_processed | dict2items }}"
   when: user_env_inputs_processed is defined and user_env_inputs_processed | length > 0
   no_log: true
 
 - name: Write .env file
   ansible.builtin.copy:
-    content: "{{ env_file_lines | join('\\n') }}"
+    content: "{{ env_file_content }}"
     dest: "/home/{{ app_user }}/app/.env"
     owner: "{{ app_user }}"
     group: "{{ app_user }}"
     mode: '0600'
-  when: env_file_lines is defined and env_file_lines | length > 0
+  when: env_file_content is defined and env_file_content | length > 0
   become: yes
   become_user: "{{ app_user }}"
 
@@ -180,13 +219,41 @@
     msg: "docker-compose.yml not found in the repository"
   when: not docker_compose_file.stat.exists
 
-- name: Run docker-compose
+- name: Pull docker-compose images
   ansible.builtin.command:
-    cmd: "/home/{{ app_user }}/bin/docker-compose up -d --build"
+    cmd: "docker compose pull"
     chdir: "/home/{{ app_user }}/app"
   become: yes
   become_user: "{{ app_user }}"
-  environment: "{{ {'DOCKER_HOST': 'unix:///run/user/{{ app_user_uid.stdout }}/docker.sock'} | combine(found_ports) }}"
+  environment: "{{
+    {'DOCKER_HOST': 'unix:///run/user/' + app_user_uid.stdout + '/docker.sock'}
+    | combine(found_ports | default({}))
+    | combine(user_env_inputs_processed | default({}))
+    }}"
+
+- name: Build docker-compose images
+  ansible.builtin.command:
+    cmd: "docker compose build"
+    chdir: "/home/{{ app_user }}/app"
+  become: yes
+  become_user: "{{ app_user }}"
+  environment: "{{
+    {'DOCKER_HOST': 'unix:///run/user/' + app_user_uid.stdout + '/docker.sock'}
+    | combine(found_ports | default({}))
+    | combine(user_env_inputs_processed | default({}))
+    }}"
+
+- name: Run docker-compose services
+  ansible.builtin.command:
+    cmd: "docker compose up --wait"
+    chdir: "/home/{{ app_user }}/app"
+  become: yes
+  become_user: "{{ app_user }}"
+  environment: "{{
+    {'DOCKER_HOST': 'unix:///run/user/' + app_user_uid.stdout + '/docker.sock'}
+    | combine(found_ports | default({}))
+    | combine(user_env_inputs_processed | default({}))
+    }}"
 
 - name: Create Nginx site configuration
   ansible.builtin.template:

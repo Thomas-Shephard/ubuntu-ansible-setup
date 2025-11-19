@@ -6,112 +6,120 @@
   register: app_user_uid
   changed_when: false
 
-- name: Check if linger file exists for app_user
+- name: Check if rootless Docker is already installed
   ansible.builtin.stat:
-    path: "/var/lib/systemd/linger/{{ app_user }}"
-  register: linger_file
-  become: yes
-
-- name: Enable lingering for app_user
-  ansible.builtin.command:
-    cmd: "loginctl enable-linger {{ app_user }}"
-  when: not linger_file.stat.exists
-  become: yes
-
-- name: "Set up subuid for {{ app_user }}"
-  ansible.builtin.lineinfile:
-    path: /etc/subuid
-    line: "{{ app_user }}:200000:65536"
-    create: yes
-    mode: '0644'
-  become: yes
-
-- name: "Set up subgid for {{ app_user }}"
-  ansible.builtin.lineinfile:
-    path: /etc/subgid
-    line: "{{ app_user }}:200000:65536"
-    create: yes
-    mode: '0644'
-  become: yes
-
-- name: Check if apparmor is installed
-  ansible.builtin.command: dpkg -s apparmor
-  register: apparmor_check
-  changed_when: false
-  failed_when: apparmor_check.rc != 0 and "package 'apparmor' is not installed" not in apparmor_check.stderr
-
-- name: Download rootless docker install script
-  ansible.builtin.get_url:
-    url: https://get.docker.com/rootless
-    dest: "/home/{{ app_user }}/get-docker-rootless.sh"
-    mode: '0755'
+    path: "/home/{{ app_user }}/.config/systemd/user/docker.service"
+  register: docker_service_file
   become: yes
   become_user: "{{ app_user }}"
 
-- name: Create AppArmor profile for RootlessKit
-  ansible.builtin.copy:
-    content: |
-      # ref: https://ubuntu.com/blog/ubuntu-23-10-restricted-unprivileged-user-namespaces
-      abi <abi/4.0>,
-      include <tunables/global>
+- name: Install and configure rootless Docker
+  when: not docker_service_file.stat.exists
+  block:
+    - name: Check if linger file exists for app_user
+      ansible.builtin.stat:
+        path: "/var/lib/systemd/linger/{{ app_user }}"
+      register: linger_file
+      become: yes
 
-      /home/{{ app_user }}/bin/rootlesskit flags=(unconfined) {
-        userns,
+    - name: Enable lingering for app_user
+      ansible.builtin.command:
+        cmd: "loginctl enable-linger {{ app_user }}"
+      when: not linger_file.stat.exists
+      become: yes
 
-        # Site-specific additions and overrides. See local/README for details.
-        include if exists <local/home.{{ app_user }}.bin.rootlesskit>
-      }
-    dest: "/etc/apparmor.d/home.{{ app_user }}.bin.rootlesskit"
-    owner: root
-    group: root
-    mode: '0644'
-  become: yes
-  when: apparmor_check.rc == 0
-  notify: restart apparmor
+    - name: "Set up subuid for {{ app_user }}"
+      ansible.builtin.lineinfile:
+        path: /etc/subuid
+        line: "{{ app_user }}:100000:65536"
+        create: yes
+        mode: '0644'
+      become: yes
 
-- name: Flush handlers to apply AppArmor profile
-  ansible.builtin.meta: flush_handlers
+    - name: "Set up subgid for {{ app_user }}"
+      ansible.builtin.lineinfile:
+        path: /etc/subgid
+        line: "{{ app_user }}:100000:65536"
+        create: yes
+        mode: '0644'
+      become: yes
 
-- name: Install rootless docker
-  ansible.builtin.command:
-    cmd: "/home/{{ app_user }}/get-docker-rootless.sh"
-  become: yes
-  become_user: "{{ app_user }}"
-  environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
+    - name: Check if apparmor is installed
+      ansible.builtin.command: dpkg -s apparmor
+      register: apparmor_check
+      changed_when: false
+      failed_when: apparmor_check.rc != 0 and "package 'apparmor' is not installed" not in apparmor_check.stderr
 
-- name: Add Docker bin to PATH for {{ app_user }}
-  ansible.builtin.lineinfile:
-    path: "/home/{{ app_user }}/.bashrc"
-    line: "export PATH=/home/{{ app_user }}/bin:$PATH"
-    create: yes
-  become: yes
-  become_user: "{{ app_user }}"
+    - name: Download rootless docker install script
+      ansible.builtin.get_url:
+        url: https://get.docker.com/rootless
+        dest: "/home/{{ app_user }}/get-docker-rootless.sh"
+        mode: '0755'
+      become: yes
+      become_user: "{{ app_user }}"
 
-- name: Add DOCKER_HOST to environment for {{ app_user }}
-  ansible.builtin.lineinfile:
-    path: "/home/{{ app_user }}/.bashrc"
-    line: "export DOCKER_HOST=unix:///run/user/{{ app_user_uid.stdout }}/docker.sock"
-    create: yes
-  become: yes
-  become_user: "{{ app_user }}"
+    - name: Temporarily disable AppArmor unprivileged userns restriction
+      ansible.builtin.sysctl:
+        name: kernel.apparmor_restrict_unprivileged_userns
+        value: '0'
+        state: present
+      become: yes
+      when: apparmor_check.rc == 0
+
+    - name: Install rootless docker
+      ansible.builtin.command:
+        cmd: "/home/{{ app_user }}/get-docker-rootless.sh"
+      become: yes
+      become_user: "{{ app_user }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
+      notify: restore apparmor restriction
+
+    - name: Add Docker bin to PATH for {{ app_user }}
+      ansible.builtin.lineinfile:
+        path: "/home/{{ app_user }}/.bashrc"
+        line: "export PATH=/home/{{ app_user }}/bin:$PATH"
+        create: yes
+      become: yes
+      become_user: "{{ app_user }}"
+
+    - name: Add DOCKER_HOST to environment for {{ app_user }}
+      ansible.builtin.lineinfile:
+        path: "/home/{{ app_user }}/.bashrc"
+        line: "export DOCKER_HOST=unix:///run/user/{{ app_user_uid.stdout }}/docker.sock"
+        create: yes
+      become: yes
+      become_user: "{{ app_user }}"
 
 - name: Reload systemd user daemon
-  ansible.builtin.systemd:
-    scope: user
-    daemon_reload: yes
+  ansible.builtin.command:
+    cmd: "systemctl --user daemon-reload"
   become: yes
   become_user: "{{ app_user }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
+  changed_when: true
 
 - name: Start and enable rootless docker service for app_user
-  ansible.builtin.systemd:
-    scope: user
-    name: docker.service
-    enabled: yes
-    state: started
+  ansible.builtin.command:
+    cmd: "systemctl --user enable --now docker.service"
   become: yes
   become_user: "{{ app_user }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
+  changed_when: true
+
+- name: Check for Docker socket
+  ansible.builtin.stat:
+    path: "/run/user/{{ app_user_uid.stdout }}/docker.sock"
+  register: docker_socket_file
+  become: yes
+  become_user: "{{ app_user }}"
+  retries: 3
+  delay: 5
+  until: docker_socket_file.stat.exists
+
+- name: Fail if Docker socket does not exist
+  ansible.builtin.fail:
+    msg: "The Docker socket at /run/user/{{ app_user_uid.stdout }}/docker.sock was not found. The rootless Docker daemon may have failed to start."
+  when: not docker_socket_file.stat.exists

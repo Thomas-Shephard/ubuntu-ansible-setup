@@ -1,5 +1,14 @@
 ---
 # tasks file for initial_setup
+- name: Ensure remote_tmp directory exists with correct permissions
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/.ansible/tmp"
+    state: directory
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+  become: yes
+
 - name: Include hardening tasks
   ansible.builtin.include_tasks: hardening.yml
 
@@ -15,7 +24,7 @@
 - name: Include webhook tasks
   ansible.builtin.include_tasks: webhook.yml
 
-- name: Install remaining essential packages
+- name: Install prerequisite packages for Docker
   ansible.builtin.apt:
     name:
       - apt-transport-https
@@ -24,12 +33,55 @@
       - software-properties-common
       - dbus-user-session
       - uidmap
-      - docker-compose
+      - gpg
     state: present
-  register: apt_install_essential_result
-  until: apt_install_essential_result is successful
+  register: apt_install_prereq_result
+  until: apt_install_prereq_result is successful
   retries: 10
   delay: 10
+
+- name: Create directory for Docker GPG key
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+  become: yes
+
+- name: Download Docker GPG key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /tmp/docker.gpg
+    mode: '0644'
+  become: yes
+
+- name: Dearmor Docker GPG key
+  ansible.builtin.command:
+    cmd: "gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.gpg"
+  changed_when: true
+  become: yes
+
+- name: Remove temporary GPG key
+  ansible.builtin.file:
+    path: /tmp/docker.gpg
+    state: absent
+  become: yes
+
+- name: Set up Docker repository
+  ansible.builtin.apt_repository:
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_lsb.codename }} stable"
+    state: present
+  become: yes
+
+- name: Install Docker Compose plugin
+  ansible.builtin.apt:
+    name: docker-compose-plugin
+    state: present
+    update_cache: yes
+  register: apt_install_compose_result
+  until: apt_install_compose_result is successful
+  retries: 10
+  delay: 10
+  become: yes
 
 - name: Deploy MOTD
   ansible.builtin.template:

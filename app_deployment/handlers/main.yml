@@ -9,3 +9,15 @@
   ansible.builtin.service:
     name: nginx
     state: restarted
+
+- name: restart apparmor
+  ansible.builtin.service:
+    name: apparmor
+    state: restarted
+
+- name: restore apparmor restriction
+  ansible.builtin.sysctl:
+    name: kernel.apparmor_restrict_unprivileged_userns
+    value: '1'
+    state: present
+  become: yes
