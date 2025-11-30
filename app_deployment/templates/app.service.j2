@@ -1,0 +1,24 @@
+[Unit]
+Description=Docker Compose Application Service
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/{{ app_user }}/app
+Environment="DOCKER_HOST=unix:///run/user/{{ app_user_uid.stdout }}/docker.sock"
+# PATH is important for rootless docker finding docker-compose plugin if needed, though usually full path in ExecStart is safer.
+Environment="PATH=/home/{{ app_user }}/bin:/usr/local/bin:/usr/bin:/bin"
+
+# Execute Docker Compose
+# We use 'up' without -d because Type=simple expects the process to stay in foreground.
+# Docker Compose will attach to the containers logs. Systemd captures stdout/stderr to journal.
+ExecStart=/home/{{ app_user }}/bin/docker compose up --build
+ExecStop=/home/{{ app_user }}/bin/docker compose down
+
+# Restart policy
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

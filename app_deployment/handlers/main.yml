@@ -21,3 +21,14 @@
     value: '1'
     state: present
   become: yes
+
+- name: restart app service
+  ansible.builtin.systemd:
+    name: app.service
+    scope: user
+    state: restarted
+    daemon_reload: yes
+  become: yes
+  become_user: "{{ app_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"

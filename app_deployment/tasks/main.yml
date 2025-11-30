@@ -54,6 +54,19 @@
 - name: Set up rootless docker for app user
   ansible.builtin.include_tasks: rootless_docker.yml
 
+- name: Ensure status directory exists
+  ansible.builtin.file:
+    path: /var/www/status
+    state: directory
+    mode: '0755'
+
+- name: Ensure apps.json exists
+  ansible.builtin.copy:
+    content: "{}"
+    dest: /var/www/status/apps.json
+    force: no
+    mode: '0644'
+
 - name: Read apps.json
   ansible.builtin.slurp:
     src: /var/www/status/apps.json
@@ -128,6 +141,16 @@
       Service {{ port_name | replace('_PORT', '') | lower | capitalize }} ({{ port_name }}) is accessible via VPN at {{ ansible_host }}:{{ host_port }}
       {% endfor %}
 
+- name: Allow application ports via VPN interface only
+  community.general.ufw:
+    rule: allow
+    interface: wg0
+    direction: in
+    port: "{{ item.value }}"
+    proto: tcp
+  loop: "{{ found_ports | dict2items }}"
+  become: yes
+
 - name: Update apps.json
   ansible.builtin.copy:
     content: "{{ existing_apps_config | default({}) | combine({app_user: found_ports}) | to_json }}"
@@ -147,6 +170,7 @@
     repo: "{{ app_repo }}"
     dest: "/home/{{ app_user }}/app"
     accept_hostkey: yes
+    force: yes
   become: yes
   become_user: "{{ app_user }}"
 

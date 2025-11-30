@@ -11,34 +11,61 @@
     msg: "docker-compose.yml not found in the repository"
   when: not docker_compose_file.stat.exists
 
-- name: Start application with Docker Compose (Background)
-  ansible.builtin.shell:
-    cmd: "/home/{{ app_user }}/bin/docker compose up --build --wait > /home/{{ app_user }}/app/deploy.log 2>&1"
-    chdir: "/home/{{ app_user }}/app"
+- name: Create systemd user directory
+  ansible.builtin.file:
+    path: "/home/{{ app_user }}/.config/systemd/user"
+    state: directory
+    mode: '0755'
   become: yes
   become_user: "{{ app_user }}"
-  environment: "{{
-    {'DOCKER_HOST': 'unix:///run/user/' + app_user_uid.stdout + '/docker.sock', 'PATH': '/home/' + app_user + '/bin:' + ansible_env.PATH}
-    | combine(found_ports | default({}))
-    | combine(user_env_inputs_processed | default('{}') | from_yaml)
-    }}"
-  async: 1800 # 30 minutes timeout
-  poll: 0
-  register: docker_deploy
 
-- name: "Manual Log Monitoring Instruction"
+- name: Install app systemd service
+  ansible.builtin.template:
+    src: app.service.j2
+    dest: "/home/{{ app_user }}/.config/systemd/user/app.service"
+    mode: '0644'
+  become: yes
+  become_user: "{{ app_user }}"
+  notify: restart app service
+
+- name: Enable and start app service
+  ansible.builtin.systemd:
+    name: app.service
+    scope: user
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  become: yes
+  become_user: "{{ app_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
+
+- name: Monitor Docker Compose service
   ansible.builtin.debug:
-    msg:
-      - "Docker deployment started in background (Job ID: {{ docker_deploy.ansible_job_id }})."
-      - "To view the live build logs, SSH onto the remote machine and run:"
-      - "sudo -u {{ app_user }} tail -f /home/{{ app_user }}/app/deploy.log"
+    msg: |
+      Docker Compose application is managed by systemd.
+      Initial build/pull may take a long time.
+      To view status: `systemctl --user status app`
+      To view live logs: `journalctl --user -u app -f`
 
-- name: Wait for Docker deployment to complete
-  ansible.builtin.async_status:
-    jid: "{{ docker_deploy.ansible_job_id }}"
-  register: job_result
-  until: job_result.finished
-  retries: 180 # 180 * 10s = 30 minutes
-  delay: 10
+- name: Verify application is responding (Health Check)
+  ansible.builtin.uri:
+    url: "http://localhost:{{ app_port }}"
+    status_code: [200, 301, 302, 307, 308, 401, 403, 404]
+    return_content: no
+  register: app_health_check
+  until: app_health_check.status != -1
+  retries: 80 # 20 minutes wait
+  delay: 15
   become: yes
   become_user: "{{ app_user }}"
+  failed_when: app_health_check.status == -1
+  ignore_errors: yes
+
+- name: Prune unused Docker objects
+  ansible.builtin.command:
+    cmd: "/home/{{ app_user }}/bin/docker system prune -f"
+  become: yes
+  become_user: "{{ app_user }}"
+  environment:
+    DOCKER_HOST: "unix:///run/user/{{ app_user_uid.stdout }}/docker.sock"

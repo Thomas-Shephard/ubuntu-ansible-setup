@@ -119,7 +119,13 @@
 - name: Write .env file
   ansible.builtin.copy:
     content: |
-      {% for key, value in (user_env_inputs_processed | from_yaml).items() %}
+      # User inputs
+      {% for key, value in user_env_inputs_processed.items() %}
+      {{ key }}={{ value }}
+      {% endfor %}
+
+      # Assigned Ports
+      {% for key, value in found_ports.items() %}
       {{ key }}={{ value }}
       {% endfor %}
     dest: "/home/{{ app_user }}/app/.env"
