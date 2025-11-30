@@ -79,3 +79,21 @@ APT::Periodic::Unattended-Upgrade "1";'
     user: "{{ new_user }}"
     state: present
     key: "{{ new_user_ssh_key }}"
+
+- name: Disable root SSH login
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^PermitRootLogin'
+    line: "PermitRootLogin no"
+    state: present
+    validate: /usr/sbin/sshd -t -f %s
+  notify: restart sshd
+
+- name: Disable password authentication for root
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PasswordAuthentication'
+    line: "PasswordAuthentication no"
+    state: present
+    validate: /usr/sbin/sshd -t -f %s
+  notify: restart sshd
