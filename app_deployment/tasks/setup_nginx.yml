@@ -1,0 +1,46 @@
+---
+- name: Create Nginx site configuration
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: "/etc/nginx/sites-available/{{ app_domain_name }}"
+  notify: restart nginx
+
+- name: Enable Nginx site
+  ansible.builtin.file:
+    src: "/etc/nginx/sites-available/{{ app_domain_name }}"
+    dest: "/etc/nginx/sites-enabled/{{ app_domain_name }}"
+    state: link
+  notify: restart nginx
+
+- name: Ensure Nginx is running (flush handlers)
+  ansible.builtin.meta: flush_handlers
+
+- name: Install Certbot
+  ansible.builtin.apt:
+    name:
+      - certbot
+      - python3-certbot-nginx
+    state: present
+  become: yes
+
+- name: Request Let's Encrypt Certificate
+  ansible.builtin.command:
+    cmd: >
+      certbot certonly --nginx
+      -d {{ app_domain_name }}
+      --non-interactive
+      --agree-tos
+      --email {{ certbot_email }}
+  register: certbot_request
+  changed_when: "'Congratulations' in certbot_request.stdout"
+  failed_when:
+    - certbot_request.rc != 0
+    - "'Certificate not yet due for renewal' not in certbot_request.stdout"
+  become: yes
+
+- name: Configure Nginx for HTTPS
+  ansible.builtin.template:
+    src: nginx_https.conf.j2
+    dest: "/etc/nginx/sites-available/{{ app_domain_name }}"
+  notify: restart nginx
+  become: yes

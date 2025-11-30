@@ -1,0 +1,131 @@
+---
+- name: Check for .env.example
+  ansible.builtin.stat:
+    path: "/home/{{ app_user }}/app/.env.example"
+  register: env_example_file
+  become: yes
+  become_user: "{{ app_user }}"
+
+- name: Read .env.example content
+  ansible.builtin.slurp:
+    src: "/home/{{ app_user }}/app/.env.example"
+  register: env_example_content
+  when: env_example_file.stat.exists
+  become: yes
+  become_user: "{{ app_user }}"
+
+- name: Parse .env.example and prepare for prompting
+  ansible.builtin.set_fact:
+    env_vars_to_prompt: |
+      {% set vars = [] %}
+      {% for line in (env_example_content.content | b64decode).splitlines() %}
+        {% if '=' in line and not line.strip().startswith('#') %}
+          {% set parts = line.split('=', 1) %}
+          {% set _ = vars.append({'name': parts[0].strip(), 'default': parts[1].strip(), 'comment': ''}) %}
+        {% endif %}
+      {% endfor %}
+      {{ vars }}
+  when: env_example_content.content is defined
+
+- name: Read existing .env file content
+  ansible.builtin.slurp:
+    src: "/home/{{ app_user }}/app/.env"
+  register: existing_env_file_content
+  when:
+    - env_example_file.stat.exists
+    - env_vars_to_prompt is defined and env_vars_to_prompt | length > 0
+    - ansible_check_mode is not defined or not ansible_check_mode # Only read if not in check mode
+  become: yes
+  become_user: "{{ app_user }}"
+  ignore_errors: yes # File might not exist yet
+
+- name: Initialize existing .env values
+  ansible.builtin.set_fact:
+    existing_env_values: {}
+
+- name: Create dictionary from existing .env file
+  ansible.builtin.set_fact:
+    existing_env_values: |
+      {% set result = {} %}
+      {% if existing_env_file_content.content is defined %}
+        {% for line in (existing_env_file_content.content | b64decode).splitlines() %}
+          {% if '=' in line %}
+            {% set parts = line.split('=', 1) %}
+            {% set _ = result.update({parts[0].strip(): parts[1].strip()}) %}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+      {{ result }}
+  when: existing_env_file_content.content is defined and existing_env_file_content.content | length > 0
+
+- name: Determine effective defaults for .env variables
+  ansible.builtin.set_fact:
+    env_vars_processed: |
+      {% set processed = [] %}
+      {% set existing_dict = existing_env_values if existing_env_values is mapping else existing_env_values | default('{}') | from_yaml %}
+      {% for item in env_vars_to_prompt | from_yaml %}
+        {% set default_source = "" %}
+        {% set temp_value = existing_dict[item.name] if item.name in existing_dict else item.default %}
+        
+        {% if item.name in existing_dict %}
+            {% set default_source = "from existing .env" %}
+        {% elif item.default %}
+            {% set default_source = "from .env.example" %}
+        {% endif %}
+        
+        {% if not temp_value and ('PASSWORD' in item.name or 'SECRET' in item.name) %}
+           {% set final_value = lookup('password', '/dev/null length=32 chars=ascii_letters,digits') %}
+           {% set default_source = "auto-generated" %}
+        {% else %}
+           {% set final_value = temp_value %}
+        {% endif %}
+
+        {% set _ = processed.append({
+          'name': item.name,
+          'comment': item.comment,
+          'effective_default': final_value,
+          'default_source': default_source
+        }) %}
+      {% endfor %}
+      {{ processed }}
+  when: env_vars_to_prompt is defined and env_vars_to_prompt | length > 0
+
+- name: Prompt for .env variables
+  ansible.builtin.pause:
+    prompt: |
+      {% if item.comment %}
+      {{ item.comment }}
+      {% endif %}
+      Enter value for {{ item.name }}
+      (Press Enter to accept: {{ item.effective_default }} ({{ item.default_source }}))
+    # echo: no (removed to enable echoing of input)
+  loop: "{{ env_vars_processed | from_yaml }}"
+  loop_control:
+    loop_var: item
+  register: prompt_results
+  when: env_vars_processed is defined and env_vars_processed | length > 0 and not ansible_check_mode
+
+- name: Process prompted .env values
+  ansible.builtin.set_fact:
+    user_env_inputs_processed: |
+      {% set inputs = {} %}
+      {% for res in prompt_results.results %}
+        {% set val = res.user_input if res.user_input | length > 0 else res.item.effective_default %}
+        {% set _ = inputs.update({res.item.name: val}) %}
+      {% endfor %}
+      {{ inputs }}
+  when: prompt_results.results is defined
+
+- name: Write .env file
+  ansible.builtin.copy:
+    content: |
+      {% for key, value in (user_env_inputs_processed | from_yaml).items() %}
+      {{ key }}={{ value }}
+      {% endfor %}
+    dest: "/home/{{ app_user }}/app/.env"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: '0600'
+  when: user_env_inputs_processed is defined and user_env_inputs_processed | length > 0
+  become: yes
+  become_user: "{{ app_user }}"
