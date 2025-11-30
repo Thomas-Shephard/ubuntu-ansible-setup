@@ -170,15 +170,29 @@
   ansible.builtin.set_fact:
     env_vars_processed: |
       {% set processed = [] %}
+      {% set existing_dict = existing_env_values if existing_env_values is mapping else existing_env_values | default('{}') | from_yaml %}
       {% for item in env_vars_to_prompt | from_yaml %}
-        {% set current_val = existing_env_values[item.name] | default(item.default, true) %}
-        {% if not current_val and ('PASSWORD' in item.name or 'SECRET' in item.name) %}
-           {% set current_val = lookup('password', '/dev/null length=32 chars=ascii_letters,digits') %}
+        {% set default_source = "" %}
+        {% set temp_value = existing_dict[item.name] if item.name in existing_dict else item.default %}
+        
+        {% if item.name in existing_dict %}
+            {% set default_source = "from existing .env" %}
+        {% elif item.default %}
+            {% set default_source = "from .env.example" %}
         {% endif %}
+        
+        {% if not temp_value and ('PASSWORD' in item.name or 'SECRET' in item.name) %}
+           {% set final_value = lookup('password', '/dev/null length=32 chars=ascii_letters,digits') %}
+           {% set default_source = "auto-generated" %}
+        {% else %}
+           {% set final_value = temp_value %}
+        {% endif %}
+
         {% set _ = processed.append({
           'name': item.name,
           'comment': item.comment,
-          'effective_default': current_val
+          'effective_default': final_value,
+          'default_source': default_source
         }) %}
       {% endfor %}
       {{ processed }}
@@ -191,7 +205,7 @@
       {{ item.comment }}
       {% endif %}
       Enter value for {{ item.name }}
-      (Press Enter to accept: {{ item.effective_default }})
+      (Press Enter to accept: {{ item.effective_default }} ({{ item.default_source }}))
     # echo: no (removed to enable echoing of input)
   loop: "{{ env_vars_processed | from_yaml }}"
   loop_control:
