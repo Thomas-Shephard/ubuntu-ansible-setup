@@ -54,17 +54,65 @@
 - name: Set up rootless docker for app user
   ansible.builtin.include_tasks: rootless_docker.yml
 
-- name: Find available ports for the application
-  ansible.builtin.shell: |
-    comm -23 <(seq 8080 8180 | sort) <(ss -Htan | awk '{print $4}' | awk -F':' '{print $NF}' | sort -u) | head -n {{ app_ports | length }}
-  args:
-    executable: /bin/bash
-  register: next_available_ports
-  changed_when: false
+- name: Read apps.json
+  ansible.builtin.slurp:
+    src: /var/www/status/apps.json
+  register: apps_json_content
 
-- name: Create a dictionary of found ports
+- name: Parse existing apps configuration
   ansible.builtin.set_fact:
-    found_ports: "{{ dict(app_ports | zip(next_available_ports.stdout_lines)) }}"
+    existing_apps_config: "{{ apps_json_content.content | b64decode | from_json }}"
+  when: apps_json_content.content is defined
+
+- name: Reconcile port assignments (Add/Remove/Keep)
+  ansible.builtin.set_fact:
+    found_ports: |
+      {% set raw_existing = existing_apps_config[app_user] | default({}) %}
+      {% set kept_ports = {} %}
+      {% set used_by_others = [] %}
+      
+      {# 1. Calculate ports used by OTHER apps #}
+      {% if existing_apps_config is defined %}
+        {% for user, user_ports in existing_apps_config.items() %}
+           {% if user != app_user %}
+             {% for p in user_ports.values() %}
+               {% set _ = used_by_others.append(p | int) %}
+             {% endfor %}
+           {% endif %}
+        {% endfor %}
+      {% endif %}
+
+      {# 2. Filter existing ports for THIS app (keep only what is still requested) #}
+      {% for key, val in raw_existing.items() %}
+        {% if key in app_ports %}
+           {% set _ = kept_ports.update({key: val | int}) %}
+        {% endif %}
+      {% endfor %}
+
+      {# 3. Identify missing keys that need new ports #}
+      {% set missing_keys = [] %}
+      {% for key in app_ports %}
+        {% if key not in kept_ports %}
+           {% set _ = missing_keys.append(key) %}
+        {% endif %}
+      {% endfor %}
+
+      {# 4. Find available candidates #}
+      {% set available_candidates = [] %}
+      {# Combine used_by_others AND what we are already keeping to find true gaps #}
+      {% set current_used = used_by_others + kept_ports.values() | list %}
+      
+      {% for p in range(8080, 8200) %}
+        {% if p not in current_used and available_candidates | length < missing_keys | length %}
+           {% set _ = available_candidates.append(p) %}
+        {% endif %}
+      {% endfor %}
+
+      {# 5. Assign new ports #}
+      {% set new_assignments = dict(missing_keys | zip(available_candidates)) %}
+      
+      {# 6. Return merged result #}
+      {{ kept_ports | combine(new_assignments) }}
 
 - name: Set app_port fact for Nginx
   ansible.builtin.set_fact:
@@ -80,14 +128,9 @@
       Service {{ port_name | replace('_PORT', '') | lower | capitalize }} ({{ port_name }}) is accessible via VPN at {{ ansible_host }}:{{ host_port }}
       {% endfor %}
 
-- name: Read apps.json
-  ansible.builtin.slurp:
-    src: /var/www/status/apps.json
-  register: apps_json_content
-
 - name: Update apps.json
   ansible.builtin.copy:
-    content: "{{ apps_json_content.content | b64decode | from_json | combine({app_user: found_ports}) | to_json }}"
+    content: "{{ existing_apps_config | default({}) | combine({app_user: found_ports}) | to_json }}"
     dest: /var/www/status/apps.json
   when: apps_json_content.content is defined
 
