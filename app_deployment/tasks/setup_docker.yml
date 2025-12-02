@@ -52,6 +52,35 @@
   async: 1800 # Allow up to 30 minutes for building
   poll: 10
 
+- name: Pre-check for failed containers to force restart
+  ansible.builtin.command:
+    cmd: "/home/{{ app_user }}/bin/docker compose ps -a --format json"
+    chdir: "/home/{{ app_user }}/app"
+  register: pre_check_containers
+  become: yes
+  become_user: "{{ app_user }}"
+  environment:
+    DOCKER_HOST: "unix:///run/user/{{ app_user_uid.stdout }}/docker.sock"
+  changed_when: false
+  ignore_errors: yes
+
+- name: Stop app service if containers are in failed state
+  ansible.builtin.systemd:
+    name: app.service
+    scope: user
+    state: stopped
+  become: yes
+  become_user: "{{ app_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout }}/bus"
+  when: >
+    pre_check_containers.rc is defined and pre_check_containers.rc == 0 and
+    (pre_check_containers.stdout_lines | default([], true) | map('from_json') | selectattr('State', 'ne', 'running') | list | length > 0)
+
+- name: Flush handlers to ensure restart happens before status check
+  ansible.builtin.meta: flush_handlers
+
 - name: Enable and start app service
   ansible.builtin.systemd:
     name: app.service
@@ -65,41 +94,75 @@
     XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
     DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout }}/bus"
 
-- name: Wait briefly for service to initialize
-  ansible.builtin.wait_for:
-    timeout: 10
-
-- name: Check service status
+- name: Wait for containers to start or fail (Fail Fast)
   ansible.builtin.command:
-    cmd: "systemctl --user is-active app"
-  register: service_status
+    cmd: "/home/{{ app_user }}/bin/docker compose ps -a --format json"
+    chdir: "/home/{{ app_user }}/app"
+  register: docker_startup_check
   become: yes
   become_user: "{{ app_user }}"
   environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
-    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout }}/bus"
+    DOCKER_HOST: "unix:///run/user/{{ app_user_uid.stdout }}/docker.sock"
+  changed_when: false
+  until: >
+    docker_startup_check.rc is defined and docker_startup_check.rc == 0 and
+    (docker_startup_check.stdout_lines | default([], true) | length > 0) and
+    (
+      (docker_startup_check.stdout_lines | map('from_json') | selectattr('State', 'ne', 'running') | list | length == 0)
+      or
+      (docker_startup_check.stdout_lines | map('from_json') | selectattr('State', 'in', ['exited', 'dead']) | list | length > 0)
+    )
+  retries: 24 # Wait up to 2 minutes (24 * 5s)
+  delay: 5
+  failed_when: >
+    docker_startup_check.rc is defined and docker_startup_check.rc != 0 or
+    (docker_startup_check.stdout_lines | default([], true) | map('from_json') | selectattr('State', 'in', ['exited', 'dead']) | list | length > 0)
   ignore_errors: yes
 
-- name: Fetch service logs on failure
+- name: Parse container status on failure
+  ansible.builtin.set_fact:
+    non_running_containers: >-
+      {{
+        docker_startup_check.stdout_lines | default([], true) |
+        map('from_json') |
+        selectattr('State', 'ne', 'running') |
+        list
+      }}
+  when: 
+    - docker_startup_check.failed
+    - docker_startup_check.rc is defined
+    - docker_startup_check.rc == 0
+- name: Fetch service logs on startup failure
   ansible.builtin.command:
-    cmd: "journalctl --user -u app -n 50 --no-pager"
-  register: service_logs
+    cmd: "journalctl _UID={{ app_user_uid.stdout }} _SYSTEMD_USER_UNIT=app.service -n 100 --no-pager"
+  register: startup_failure_logs
   become: yes
-  become_user: "{{ app_user }}"
-  environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
-  when: service_status.rc != 0
+  when: docker_startup_check.failed
 
-- name: Fail with logs if service is not active
-  ansible.builtin.fail:
-    msg: |
-      Service failed to start!
-      Status: {{ service_status.stdout }}
+- name: Display failure details
+  ansible.builtin.debug:
+    msg: "{{ failure_message.split('\n') }}"
+  vars:
+    failure_message: |
+      Containers failed to start properly!
       
-      Recent Logs:
-      {{ service_logs.stdout }}
-  when: service_status.rc != 0
+      Non-Running Containers:
+      {% for container in non_running_containers %}
+      - Name: {{ container.Name }}
+        State: {{ container.State }}
+        Exit Code: {{ container.ExitCode }}
+        Status: {{ container.Status }}
+      {% endfor %}
+      
+      Recent Service Logs:
+      ---------------------------------------------------
+      {{ startup_failure_logs.stdout }}
+  when: docker_startup_check.failed
 
+- name: Fail deployment
+  ansible.builtin.fail:
+    msg: "Deployment failed due to non-running containers. See above debug message for details."
+  when: docker_startup_check.failed
 - name: Verify application is responding (Health Check)
   ansible.builtin.uri:
     url: "http://localhost:{{ app_port }}"
@@ -107,12 +170,31 @@
     return_content: no
   register: app_health_check
   until: app_health_check.status != -1
-  retries: 80 # 20 minutes wait
+  retries: 10 # 2.5 minutes wait
   delay: 15
   become: yes
   become_user: "{{ app_user }}"
   failed_when: app_health_check.status == -1
   ignore_errors: yes
+
+- name: Fetch service logs on health check failure
+  ansible.builtin.command:
+    cmd: "journalctl --user -u app -n 50 --no-pager"
+  register: health_check_logs
+  become: yes
+  become_user: "{{ app_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
+  when: app_health_check.failed
+
+- name: Fail with logs if health check failed
+  ansible.builtin.fail:
+    msg: |
+      Application health check failed! The application is not responding at http://localhost:{{ app_port }}
+
+      Recent Logs:
+      {{ health_check_logs.stdout }}
+  when: app_health_check.failed
 
 - name: Prune unused Docker objects
   ansible.builtin.command:

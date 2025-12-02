@@ -137,6 +137,7 @@
     owner: "{{ app_user }}"
     group: "{{ app_user }}"
     mode: '0600'
+  notify: restart app service
   when: user_env_inputs_processed is defined and user_env_inputs_processed | length > 0
   become: yes
   become_user: "{{ app_user }}"
