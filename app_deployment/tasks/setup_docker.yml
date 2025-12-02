@@ -65,16 +65,40 @@
     XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
     DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout }}/bus"
 
-- name: Monitor Docker Compose service
-  ansible.builtin.debug:
+- name: Wait briefly for service to initialize
+  ansible.builtin.wait_for:
+    timeout: 10
+
+- name: Check service status
+  ansible.builtin.command:
+    cmd: "systemctl --user is-active app"
+  register: service_status
+  become: yes
+  become_user: "{{ app_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout }}/bus"
+  ignore_errors: yes
+
+- name: Fetch service logs on failure
+  ansible.builtin.command:
+    cmd: "journalctl --user -u app -n 50 --no-pager"
+  register: service_logs
+  become: yes
+  become_user: "{{ app_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
+  when: service_status.rc != 0
+
+- name: Fail with logs if service is not active
+  ansible.builtin.fail:
     msg: |
-      Application deployed successfully!
-
-      To view the service status:
-      sudo -u {{ app_user }} XDG_RUNTIME_DIR=/run/user/{{ app_user_uid.stdout }} systemctl --user status app
-
-      To follow the logs:
-      sudo -u {{ app_user }} XDG_RUNTIME_DIR=/run/user/{{ app_user_uid.stdout }} journalctl --user -u app -f
+      Service failed to start!
+      Status: {{ service_status.stdout }}
+      
+      Recent Logs:
+      {{ service_logs.stdout }}
+  when: service_status.rc != 0
 
 - name: Verify application is responding (Health Check)
   ansible.builtin.uri:
@@ -97,3 +121,14 @@
   become_user: "{{ app_user }}"
   environment:
     DOCKER_HOST: "unix:///run/user/{{ app_user_uid.stdout }}/docker.sock"
+
+- name: Monitor Docker Compose service
+  ansible.builtin.debug:
+    msg: |
+      Application deployed successfully!
+
+      To view the service status:
+      sudo -u {{ app_user }} XDG_RUNTIME_DIR=/run/user/{{ app_user_uid.stdout }} systemctl --user status app
+
+      To follow the logs:
+      sudo journalctl _UID={{ app_user_uid.stdout }} _SYSTEMD_USER_UNIT=app.service -f
