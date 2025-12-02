@@ -18,10 +18,17 @@
   ansible.builtin.set_fact:
     env_vars_to_prompt: |
       {% set vars = [] %}
+      {% set context = {'last_comment': ''} %}
       {% for line in (env_example_content.content | b64decode).splitlines() %}
-        {% if '=' in line and not line.strip().startswith('#') %}
+        {% set stripped_line = line.strip() %}
+        {% if stripped_line.startswith('#') %}
+          {% set _ = context.update({'last_comment': stripped_line[1:].strip()}) %}
+        {% elif '=' in line and not stripped_line.startswith('#') %}
           {% set parts = line.split('=', 1) %}
-          {% set _ = vars.append({'name': parts[0].strip(), 'default': parts[1].strip(), 'comment': ''}) %}
+          {% set _ = vars.append({'name': parts[0].strip(), 'default': parts[1].strip(), 'comment': context.last_comment}) %}
+          {% set _ = context.update({'last_comment': ''}) %}
+        {% else %}
+          {% set _ = context.update({'last_comment': ''}) %}
         {% endif %}
       {% endfor %}
       {{ vars }}
