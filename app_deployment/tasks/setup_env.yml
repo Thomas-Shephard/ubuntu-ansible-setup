@@ -116,6 +116,11 @@
       {{ inputs }}
   when: prompt_results.results is defined
 
+- name: Ensure user_env_inputs_processed is a dictionary
+  ansible.builtin.set_fact:
+    user_env_inputs_processed: "{{ user_env_inputs_processed | from_yaml }}"
+  when: user_env_inputs_processed is defined
+
 - name: Write .env file
   ansible.builtin.copy:
     content: |
