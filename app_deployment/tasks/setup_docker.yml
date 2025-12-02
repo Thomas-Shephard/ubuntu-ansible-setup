@@ -28,6 +28,30 @@
   become_user: "{{ app_user }}"
   notify: restart app service
 
+- name: Pull Docker images (this may take a while)
+  ansible.builtin.command:
+    cmd: "/home/{{ app_user }}/bin/docker compose pull"
+    chdir: "/home/{{ app_user }}/app"
+  become: yes
+  become_user: "{{ app_user }}"
+  environment:
+    DOCKER_HOST: "unix:///run/user/{{ app_user_uid.stdout }}/docker.sock"
+    PATH: "/home/{{ app_user }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  async: 1800 # Allow up to 30 minutes for pulling images
+  poll: 10    # Check status every 10 seconds
+
+- name: Build Docker images (this may take a while)
+  ansible.builtin.command:
+    cmd: "/home/{{ app_user }}/bin/docker compose build"
+    chdir: "/home/{{ app_user }}/app"
+  become: yes
+  become_user: "{{ app_user }}"
+  environment:
+    DOCKER_HOST: "unix:///run/user/{{ app_user_uid.stdout }}/docker.sock"
+    PATH: "/home/{{ app_user }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  async: 1800 # Allow up to 30 minutes for building
+  poll: 10
+
 - name: Enable and start app service
   ansible.builtin.systemd:
     name: app.service
@@ -44,10 +68,13 @@
 - name: Monitor Docker Compose service
   ansible.builtin.debug:
     msg: |
-      Docker Compose application is managed by systemd.
-      Initial build/pull may take a long time.
-      To view status: `systemctl --user status app`
-      To view live logs: `journalctl --user -u app -f`
+      Application deployed successfully!
+
+      To view the service status:
+      sudo -u {{ app_user }} XDG_RUNTIME_DIR=/run/user/{{ app_user_uid.stdout }} systemctl --user status app
+
+      To follow the logs:
+      sudo -u {{ app_user }} XDG_RUNTIME_DIR=/run/user/{{ app_user_uid.stdout }} journalctl --user -u app -f
 
 - name: Verify application is responding (Health Check)
   ansible.builtin.uri:
