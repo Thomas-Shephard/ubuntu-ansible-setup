@@ -39,6 +39,7 @@
   become_user: "{{ app_user }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout }}/bus"
 
 - name: Monitor Docker Compose service
   ansible.builtin.debug:

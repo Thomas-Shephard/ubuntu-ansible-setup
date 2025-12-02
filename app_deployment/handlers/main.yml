@@ -15,12 +15,7 @@
     name: apparmor
     state: restarted
 
-- name: restore apparmor restriction
-  ansible.builtin.sysctl:
-    name: kernel.apparmor_restrict_unprivileged_userns
-    value: '1'
-    state: present
-  become: yes
+
 
 - name: restart app service
   ansible.builtin.systemd:
@@ -32,3 +27,4 @@
   become_user: "{{ app_user }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout }}/bus"
