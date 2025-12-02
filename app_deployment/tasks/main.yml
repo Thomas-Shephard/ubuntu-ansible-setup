@@ -129,6 +129,10 @@
       {# 6. Return merged result #}
       {{ kept_ports | combine(new_assignments) }}
 
+- name: Ensure found_ports is a dictionary
+  ansible.builtin.set_fact:
+    found_ports: "{{ found_ports | from_yaml }}"
+
 - name: Set app_port fact for Nginx
   ansible.builtin.set_fact:
     app_port: "{{ found_ports.APP_PORT }}"
