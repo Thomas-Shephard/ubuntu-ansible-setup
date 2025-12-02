@@ -1,6 +1,7 @@
 ---
 # vars file for app_deployment
 app_repo: "your_app_repo.git"
-app_domain_name: your_domain.com
+app_domain_name: "your_domain.com"
+certbot_email: "email@example.com"
 app_ports:
   - APP_PORT

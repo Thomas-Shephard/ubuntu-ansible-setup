@@ -34,6 +34,7 @@
       - dbus-user-session
       - uidmap
       - gpg
+      - acl
     state: present
   register: apt_install_prereq_result
   until: apt_install_prereq_result is successful

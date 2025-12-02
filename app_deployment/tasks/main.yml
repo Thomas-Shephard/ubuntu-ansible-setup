@@ -6,9 +6,11 @@
   when: app_repo == 'your_app_repo.git'
   run_once: true
 
-- name: Ensure git is installed
+- name: Ensure required packages are installed
   ansible.builtin.apt:
-    name: git
+    name:
+      - git
+      - acl
     state: present
     update_cache: yes
 
