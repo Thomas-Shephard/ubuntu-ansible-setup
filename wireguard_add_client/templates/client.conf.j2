@@ -1,9 +1,9 @@
 [Interface]
 PrivateKey = YOUR_CLIENT_PRIVATE_KEY
 Address = 10.0.0.{{ next_ip }}/32
-DNS = 1.1.1.1
+DNS = {{ wireguard_dns }}
 
 [Peer]
 PublicKey = {{ server_public_key }}
-Endpoint = {{ ansible_host }}:51820
+Endpoint = {{ ansible_host }}:{{ wireguard_port }}
 AllowedIPs = 0.0.0.0/0

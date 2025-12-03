@@ -1,8 +1,29 @@
 ---
 # tasks file for wireguard_add_client
+- name: Validate client name format
+  ansible.builtin.fail:
+    msg: "Client name must contain only alphanumeric characters, underscores, or hyphens."
+  when: not client_name | regex_search('^[a-zA-Z0-9_-]+$')
+
+- name: Check if client name is already in use
+  ansible.builtin.shell: grep -q "# {{ client_name }}$" /etc/wireguard/wg0.conf
+  register: name_check
+  failed_when: false
+  changed_when: false
+
+- name: Fail if client name is taken
+  ansible.builtin.fail:
+    msg: "Client name '{{ client_name }}' is already in use. Please choose a different name."
+  when: name_check.rc == 0
+
 - name: Find the next available IP address
   ansible.builtin.shell: |
-    grep "AllowedIPs" /etc/wireguard/wg0.conf | awk -F'[ ./]' '{print $5}' | sort -n | tail -1 | awk '{print $1+1}'
+    LAST_IP=$(grep "AllowedIPs" /etc/wireguard/wg0.conf 2>/dev/null | sed -n 's/.*10\.0\.0\.\([0-9]*\).*/\1/p' | sort -n | tail -1)
+    if [ -z "$LAST_IP" ]; then
+      echo 2
+    else
+      awk -v ip="$LAST_IP" 'BEGIN {print ip + 1}'
+    fi
   register: next_ip_raw
   changed_when: false
 
@@ -10,12 +31,24 @@
   ansible.builtin.set_fact:
     next_ip: "{{ next_ip_raw.stdout }}"
 
+- name: Get WireGuard listening port
+  ansible.builtin.shell: |
+    grep "^ListenPort" /etc/wireguard/wg0.conf | awk '{print $3}'
+  register: wg_port_raw
+  changed_when: false
+  failed_when: false
+
 - name: Check for existing peer
   ansible.builtin.command:
     cmd: "grep -q '{{ client_public_key }}' /etc/wireguard/wg0.conf"
   register: existing_peer
   failed_when: false
   changed_when: false
+
+- name: Fail if client public key is already in use
+  ansible.builtin.fail:
+    msg: "Client public key is already registered in configuration."
+  when: existing_peer.rc == 0
 
 - name: Add client peer to server configuration
   ansible.builtin.lineinfile:
@@ -27,7 +60,6 @@
       AllowedIPs = 10.0.0.{{ next_ip }}/32
     insertafter: EOF
   notify: restart wireguard
-  when: existing_peer.rc != 0
 
 - name: Get server public key
   ansible.builtin.slurp:
@@ -40,3 +72,15 @@
     dest: "{{ client_name }}.conf"
   vars:
     server_public_key: "{{ server_public_key_b64['content'] | b64decode }}"
+    wireguard_port: "{{ wg_port_raw.stdout | default('51820', true) }}"
+
+- name: Fetch client configuration file
+  ansible.builtin.fetch:
+    src: "{{ client_name }}.conf"
+    dest: "./"
+    flat: yes
+
+- name: Remove remote client configuration file
+  ansible.builtin.file:
+    path: "{{ client_name }}.conf"
+    state: absent

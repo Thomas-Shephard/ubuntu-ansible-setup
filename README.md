@@ -88,13 +88,19 @@ After the initial setup is complete, you can deploy one or more applications by 
 
 This playbook adds a new client to the WireGuard VPN.
 
-1.  **Generate a Key Pair:** On your client machine, generate a new WireGuard key pair.
-2.  **Configure Client Variables:** Open `wireguard_add_client/vars/main.yml` and set `client_name` and `client_public_key`.
-3.  **Run the Playbook:**
+1.  **Configure Client Variables:**
+    Open `wireguard_add_client/vars/main.yml` and set:
+    - `client_name`: A unique name for your device.
+    - `client_public_key`: The public key of your WireGuard client.
+
+2.  **Run the Playbook:**
     ```bash
     ansible-playbook -i inventory add_client.yml
     ```
-    This will generate a `<client_name>.conf` file in the project root. Import this into your WireGuard client after adding your private key.
+    This will generate a `<client_name>.conf` file in the project root.
+
+3.  **Finalize & Import:**
+    Open the generated `<client_name>.conf` file, replace `YOUR_CLIENT_PRIVATE_KEY` with your client's private key, and then import the configuration into your WireGuard client application.
 
 #### Removing an Application (`remove_app.yml`)
 
