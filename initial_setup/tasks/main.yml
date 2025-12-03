@@ -21,6 +21,9 @@
 - name: Include vpn tasks
   ansible.builtin.include_tasks: vpn.yml
 
+- name: Include dns tasks
+  ansible.builtin.include_tasks: dns.yml
+
 - name: Include webhook tasks
   ansible.builtin.include_tasks: webhook.yml
 

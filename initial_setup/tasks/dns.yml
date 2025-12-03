@@ -1,0 +1,29 @@
+---
+- name: Install dnsmasq
+  ansible.builtin.apt:
+    name: dnsmasq
+    state: present
+  register: apt_install_dnsmasq_result
+  until: apt_install_dnsmasq_result is successful
+  retries: 10
+  delay: 10
+
+- name: Configure dnsmasq for internal domain
+  ansible.builtin.copy:
+    dest: /etc/dnsmasq.d/internal.conf
+    content: |
+      listen-address=10.0.0.1
+      bind-interfaces
+      address=/status.internal/10.0.0.1
+      server=1.1.1.1
+      server=8.8.8.8
+      domain-needed
+      bogus-priv
+    mode: '0644'
+  notify: restart dnsmasq
+
+- name: Ensure dnsmasq is enabled and started
+  ansible.builtin.service:
+    name: dnsmasq
+    state: started
+    enabled: yes

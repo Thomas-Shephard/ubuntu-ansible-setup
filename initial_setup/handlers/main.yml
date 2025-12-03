@@ -26,3 +26,13 @@
     name: status
     state: restarted
     daemon_reload: yes
+
+- name: restart dnsmasq
+  ansible.builtin.service:
+    name: dnsmasq
+    state: restarted
+
+- name: restart nginx
+  ansible.builtin.service:
+    name: nginx
+    state: restarted

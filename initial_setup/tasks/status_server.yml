@@ -41,6 +41,19 @@
     dest: /etc/systemd/system/status.service
   notify: restart status
 
+- name: Configure Nginx for status page
+  ansible.builtin.template:
+    src: nginx_status.conf.j2
+    dest: /etc/nginx/sites-available/status.internal
+  notify: restart nginx
+
+- name: Enable Nginx status site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/status.internal
+    dest: /etc/nginx/sites-enabled/status.internal
+    state: link
+  notify: restart nginx
+
 - name: Create initial apps.json
   ansible.builtin.copy:
     content: "{}"
@@ -55,8 +68,3 @@
     state: started
     daemon_reload: yes
 
-- name: Allow status server through UFW
-  community.general.ufw:
-    rule: allow
-    port: "{{ status_port }}"
-    proto: tcp

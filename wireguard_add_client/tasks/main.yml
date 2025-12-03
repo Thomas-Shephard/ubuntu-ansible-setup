@@ -5,6 +5,11 @@
     msg: "Client name must contain only alphanumeric characters, underscores, or hyphens."
   when: not client_name | regex_search('^[a-zA-Z0-9_-]+$')
 
+- name: Validate client public key format
+  ansible.builtin.fail:
+    msg: "Client public key format is invalid. It should be a 44-character Base64 encoded Curve25519 public key."
+  when: not client_public_key | regex_search('^[A-Za-z0-9+/]{43}=?$')
+
 - name: Check if client name is already in use
   ansible.builtin.shell: grep -q "# {{ client_name }}$" /etc/wireguard/wg0.conf
   register: name_check

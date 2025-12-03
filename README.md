@@ -92,6 +92,7 @@ This playbook adds a new client to the WireGuard VPN.
     Open `wireguard_add_client/vars/main.yml` and set:
     - `client_name`: A unique name for your device.
     - `client_public_key`: The public key of your WireGuard client.
+      **Note:** WireGuard keys are based on Curve25519 and are not compatible with typical RSA or SSH keys.
 
 2.  **Run the Playbook:**
     ```bash
@@ -128,4 +129,4 @@ If your application repository contains a `.env.example` file, the `deploy.yml` 
 
 #### Service Status Webpage
 
-A simple status page is created that lists all deployed services and provides clickable links to access them. This page is accessible **via VPN only** at `http://<your_server_ip>:{{ status_port }}`.
+A simple status page is created that lists all deployed services and provides clickable links to access them. This page is accessible **via VPN only** at `http://status.internal`.

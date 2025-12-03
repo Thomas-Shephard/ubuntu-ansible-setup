@@ -2,4 +2,4 @@
 # vars file for wireguard_add_client
 client_name: client2
 client_public_key: "CLIENT_PUBLIC_KEY"
-wireguard_dns: "8.8.8.8"
+wireguard_dns: "10.0.0.1"
