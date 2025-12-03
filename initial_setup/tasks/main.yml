@@ -48,24 +48,32 @@
     mode: '0755'
   become: yes
 
+- name: Check if Docker GPG key exists
+  ansible.builtin.stat:
+    path: /etc/apt/keyrings/docker.gpg
+  register: docker_gpg_existing
+  become: yes
+
 - name: Download Docker GPG key
   ansible.builtin.get_url:
     url: https://download.docker.com/linux/ubuntu/gpg
     dest: /tmp/docker.gpg
     mode: '0644'
   become: yes
+  when: not docker_gpg_existing.stat.exists
 
 - name: Dearmor Docker GPG key
   ansible.builtin.command:
     cmd: "gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.gpg"
-  changed_when: true
   become: yes
+  when: not docker_gpg_existing.stat.exists
 
 - name: Remove temporary GPG key
   ansible.builtin.file:
     path: /tmp/docker.gpg
     state: absent
   become: yes
+  when: not docker_gpg_existing.stat.exists
 
 - name: Set up Docker repository
   ansible.builtin.apt_repository:

@@ -80,7 +80,6 @@ APT::Periodic::Unattended-Upgrade "1";'
   ansible.builtin.user:
     name: "{{ new_user }}"
     password: "{{ new_user_password | password_hash('sha512') }}" # Hash the password
-    update_password: on_create
     shell: /bin/bash
     groups: sudo
     append: yes

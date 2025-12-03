@@ -29,6 +29,7 @@
 - name: Generate server private key
   ansible.builtin.shell: wg genkey > /etc/wireguard/server_private.key
   when: not server_private_key_file.stat.exists
+  register: gen_private_key
 
 - name: Set permissions on server private key
   ansible.builtin.file:
@@ -47,7 +48,7 @@
 
 - name: Generate server public key
   ansible.builtin.shell: wg pubkey < /etc/wireguard/server_private.key > /etc/wireguard/server_public.key
-  when: not server_public_key_file.stat.exists
+  when: not server_public_key_file.stat.exists or (gen_private_key.changed | default(false))
 
 - name: Read server public key
   ansible.builtin.slurp:
