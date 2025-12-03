@@ -35,7 +35,6 @@ This playbook performs the initial, one-time server setup. It hardens the server
     - `webhook_secret`: A secret string for securing the GitHub webhook.
     - `webhook_port`: The port for the webhook listener (defaults to `5000`).
     - `vpn_port`: The UDP port for WireGuard (defaults to `51820`).
-    - `status_port`: The port for the service status webpage (defaults to `5001`).
 
 3.  **Run the Setup Playbook:**
     Execute the `setup.yml` playbook. You will be prompted for the root user's password.
