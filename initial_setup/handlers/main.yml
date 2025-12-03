@@ -20,3 +20,9 @@
   ansible.builtin.service:
     name: apparmor
     state: restarted
+
+- name: restart status
+  ansible.builtin.systemd:
+    name: status
+    state: restarted
+    daemon_reload: yes

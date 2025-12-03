@@ -5,7 +5,7 @@ After=network.target
 [Service]
 User=root
 WorkingDirectory=/var/www/status
-ExecStart=/usr/bin/python3 /var/www/status/status_server.py
+ExecStart=/usr/bin/gunicorn --workers 2 --bind 0.0.0.0:{{ status_port }} --access-logfile - --error-logfile - status_server:app
 Restart=always
 
 [Install]

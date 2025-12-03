@@ -7,6 +7,7 @@
       - python3-pip
       - virtualenv
       - python3-setuptools
+      - gunicorn
     state: present
   become: yes
   register: apt_install_python_result

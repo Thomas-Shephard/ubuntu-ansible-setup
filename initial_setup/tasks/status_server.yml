@@ -1,20 +1,45 @@
 ---
 # tasks file for status server setup
+- name: Install Flask and Gunicorn
+  ansible.builtin.apt:
+    name:
+      - python3-flask
+      - gunicorn
+    state: present
+  register: apt_install_flask_result
+  until: apt_install_flask_result is successful
+  retries: 10
+  delay: 10
+
 - name: Create status server directory
   ansible.builtin.file:
     path: /var/www/status
     state: directory
     mode: '0755'
 
+- name: Create templates directory
+  ansible.builtin.file:
+    path: /var/www/status/templates
+    state: directory
+    mode: '0755'
+
+- name: Template status HTML
+  ansible.builtin.template:
+    src: status.html.j2
+    dest: /var/www/status/templates/status.html
+  notify: restart status
+
 - name: Template status server script
   ansible.builtin.template:
     src: status_server.py.j2
     dest: /var/www/status/status_server.py
+  notify: restart status
 
 - name: Template status service file
   ansible.builtin.template:
     src: status.service.j2
     dest: /etc/systemd/system/status.service
+  notify: restart status
 
 - name: Create initial apps.json
   ansible.builtin.copy:

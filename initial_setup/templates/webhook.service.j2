@@ -5,7 +5,7 @@ After=network.target
 [Service]
 User={{ new_user }}
 WorkingDirectory=/home/{{ new_user }}
-ExecStart=/usr/bin/python3 /home/{{ new_user }}/webhook_listener.py
+ExecStart=/usr/bin/gunicorn --workers 2 --bind 0.0.0.0:{{ webhook_port }} --access-logfile - --error-logfile - webhook_listener:app
 Restart=always
 
 [Install]
