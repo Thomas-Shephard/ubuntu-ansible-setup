@@ -27,7 +27,11 @@ def webhook():
         payload = request.get_json()
         if payload['ref'] == 'refs/heads/master':
             repo_name = payload['repository']['name']
-            subprocess.Popen(['/home/{{ new_user }}/update.sh', repo_name])
+            # Calculate app_user: Linux users are limited to 32 chars.
+            # We assume the repo name corresponds to the user, truncated.
+            app_user = repo_name[:32]
+            
+            subprocess.Popen(['/home/{{ new_user }}/update.sh', repo_name, app_user])
             return "Update triggered for " + repo_name, 200
 
     return "Event not handled", 200

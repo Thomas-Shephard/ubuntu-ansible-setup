@@ -44,7 +44,7 @@
     port: "{{ old_ssh_port }}"
     proto: tcp
     delete: yes
-  when: old_ssh_port != ssh_port and old_ssh_port | length > 0
+  when: old_ssh_port | string != ssh_port | string and old_ssh_port | length > 0
 
 - name: Enable UFW
   community.general.ufw:
@@ -80,6 +80,7 @@ APT::Periodic::Unattended-Upgrade "1";'
   ansible.builtin.user:
     name: "{{ new_user }}"
     password: "{{ new_user_password | password_hash('sha512') }}" # Hash the password
+    update_password: on_create
     shell: /bin/bash
     groups: sudo
     append: yes

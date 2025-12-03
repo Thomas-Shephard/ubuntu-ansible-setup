@@ -21,41 +21,47 @@
     state: directory
     mode: '0700'
 
-- name: Generate server private key
-  ansible.builtin.command:
-    cmd: wg genkey
-    creates: /etc/wireguard/server_private.key
-  register: server_private_key
-  changed_when: server_private_key.stdout != ""
+- name: Check if server private key exists
+  ansible.builtin.stat:
+    path: /etc/wireguard/server_private.key
+  register: server_private_key_file
 
-- name: Save server private key
-  ansible.builtin.copy:
-    content: "{{ server_private_key.stdout }}"
-    dest: /etc/wireguard/server_private.key
+- name: Generate server private key
+  ansible.builtin.shell: wg genkey > /etc/wireguard/server_private.key
+  when: not server_private_key_file.stat.exists
+
+- name: Set permissions on server private key
+  ansible.builtin.file:
+    path: /etc/wireguard/server_private.key
     mode: '0600'
-  when: server_private_key.stdout != ""
+
+- name: Read server private key
+  ansible.builtin.slurp:
+    src: /etc/wireguard/server_private.key
+  register: server_private_key_content
+
+- name: Check if server public key exists
+  ansible.builtin.stat:
+    path: /etc/wireguard/server_public.key
+  register: server_public_key_file
 
 - name: Generate server public key
-  ansible.builtin.command:
-    cmd: wg pubkey
-    stdin: "{{ server_private_key.stdout }}"
-    creates: /etc/wireguard/server_public.key
-  register: server_public_key
-  changed_when: server_public_key.stdout != ""
-  when: server_private_key.stdout != ""
+  ansible.builtin.shell: wg pubkey < /etc/wireguard/server_private.key > /etc/wireguard/server_public.key
+  when: not server_public_key_file.stat.exists
 
-- name: Save server public key
-  ansible.builtin.copy:
-    content: "{{ server_public_key.stdout }}"
-    dest: /etc/wireguard/server_public.key
-    mode: '0644'
-  when: server_public_key.stdout != ""
+- name: Read server public key
+  ansible.builtin.slurp:
+    src: /etc/wireguard/server_public.key
+  register: server_public_key_content
 
 - name: Create WireGuard configuration
   ansible.builtin.template:
     src: wg0.conf.j2
     dest: /etc/wireguard/wg0.conf
     mode: '0600'
+  vars:
+    server_private_key:
+      stdout: "{{ server_private_key_content['content'] | b64decode | trim }}"
   notify: restart wireguard
 
 - name: Enable IP forwarding
