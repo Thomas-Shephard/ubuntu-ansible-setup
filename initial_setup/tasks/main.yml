@@ -12,11 +12,11 @@
 - name: Include hardening tasks
   ansible.builtin.include_tasks: hardening.yml
 
-- name: Include status_server tasks
-  ansible.builtin.include_tasks: status_server.yml
-
 - name: Include reverse_proxy tasks
   ansible.builtin.include_tasks: reverse_proxy.yml
+
+- name: Include status_server tasks
+  ansible.builtin.include_tasks: status_server.yml
 
 - name: Include vpn tasks
   ansible.builtin.include_tasks: vpn.yml

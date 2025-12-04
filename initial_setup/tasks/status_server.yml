@@ -61,6 +61,12 @@
     mode: '0644'
     force: no
 
+- name: Add status.internal to /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    line: "127.0.0.1 status.internal"
+    state: present
+
 - name: Ensure status service is enabled and started
   ansible.builtin.systemd:
     name: status
