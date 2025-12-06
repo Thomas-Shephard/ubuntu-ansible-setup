@@ -10,50 +10,84 @@
     msg: "Client public key format is invalid. It should be a 44-character Base64 encoded Curve25519 public key."
   when: not client_public_key | regex_search('^[A-Za-z0-9+/]{43}=?$')
 
-- name: Check if client name is already in use
-  ansible.builtin.shell: grep -q "# {{ client_name }}$" /etc/wireguard/wg0.conf
-  register: name_check
-  failed_when: false
-  changed_when: false
-
-- name: Fail if client name is taken
-  ansible.builtin.fail:
-    msg: "Client name '{{ client_name }}' is already in use. Please choose a different name."
-  when: name_check.rc == 0
-
-- name: Find the next available IP address
+- name: Get WireGuard configuration status
   ansible.builtin.shell: |
-    LAST_IP=$(grep "AllowedIPs" /etc/wireguard/wg0.conf 2>/dev/null | sed -n 's/.*10\.0\.0\.\([0-9]*\).*/\1/p' | sort -n | tail -1)
-    if [ -z "$LAST_IP" ]; then
-      echo 2
-    else
-      awk -v ip="$LAST_IP" 'BEGIN {print ip + 1}'
-    fi
-  register: next_ip_raw
+    python3 -c "
+    import sys, json, re
+    path = '/etc/wireguard/wg0.conf'
+    peers = []
+    current_peer = None
+    try:
+        with open(path, 'r') as f:
+            lines = f.readlines()
+    except:
+        # If file doesn't exist, return empty list
+        print(json.dumps([])); sys.exit(0)
+
+    for line in lines:
+        line = line.strip()
+        if line == '[Peer]':
+            if current_peer: peers.append(current_peer)
+            current_peer = {'name': '', 'public_key': '', 'ip': 0}
+        elif current_peer is not None:
+            if line.startswith('#'):
+                # Extract name from comment
+                comment = line.lstrip('#').strip()
+                if re.match(r'^[a-zA-Z0-9_-]+$', comment):
+                    current_peer['name'] = comment
+            elif line.startswith('PublicKey'):
+                parts = line.split('=', 1)
+                if len(parts) > 1:
+                    current_peer['public_key'] = parts[1].strip()
+            elif line.startswith('AllowedIPs'):
+                # Parse 10.0.0.X
+                m = re.search(r'10\.0\.0\.(\d+)', line)
+                if m: current_peer['ip'] = int(m.group(1))
+    if current_peer: peers.append(current_peer)
+    print(json.dumps(peers))
+    "
+  register: wg_status_json
   changed_when: false
 
-- name: Set next_ip fact
+- name: Process WireGuard status
   ansible.builtin.set_fact:
-    next_ip: "{{ next_ip_raw.stdout }}"
+    wg_peers: "{{ wg_status_json.stdout | from_json }}"
 
-- name: Get WireGuard listening port
-  ansible.builtin.shell: |
-    grep "^ListenPort" /etc/wireguard/wg0.conf | awk '{print $3}'
-  register: wg_port_raw
-  changed_when: false
-  failed_when: false
+- name: Check for existing client
+  vars:
+    peers_by_name: "{{ wg_peers | selectattr('name', 'equalto', client_name) | list }}"
+    peers_by_key: "{{ wg_peers | selectattr('public_key', 'equalto', client_public_key) | list }}"
+  ansible.builtin.set_fact:
+    existing_peer_by_name: "{{ peers_by_name | first if peers_by_name else {} }}"
+    existing_peer_by_key: "{{ peers_by_key | first if peers_by_key else {} }}"
 
-- name: Check for existing peer
-  ansible.builtin.command:
-    cmd: "grep -q '{{ client_public_key }}' /etc/wireguard/wg0.conf"
-  register: existing_peer
-  failed_when: false
-  changed_when: false
-
-- name: Fail if client public key is already in use
+- name: Fail if name is taken by different key
   ansible.builtin.fail:
-    msg: "Client public key is already registered in configuration."
-  when: existing_peer.rc == 0
+    msg: "Client name '{{ client_name }}' is already in use by a different key."
+  when: 
+    - existing_peer_by_name | length > 0
+    - existing_peer_by_name.public_key != client_public_key
+
+- name: Fail if key is in use by different name
+  ansible.builtin.fail:
+    msg: "Public key is already in use by client '{{ existing_peer_by_key.name }}'."
+  when:
+    - existing_peer_by_key | length > 0
+    - existing_peer_by_key.name != client_name
+    - existing_peer_by_name | length == 0
+
+- name: Determine IP Address
+  ansible.builtin.set_fact:
+    client_ip_addr: >-
+      {{
+        existing_peer_by_name.ip 
+        if (existing_peer_by_name | length > 0 and existing_peer_by_name.public_key == client_public_key)
+        else (wg_peers | map(attribute='ip') | max | default(1) | int + 1)
+      }}
+    mode_update: >-
+      {{
+        existing_peer_by_name | length > 0 and existing_peer_by_name.public_key == client_public_key
+      }}
 
 - name: Add client peer to server configuration
   ansible.builtin.lineinfile:
@@ -62,21 +96,30 @@
       [Peer]
       # {{ client_name }}
       PublicKey = {{ client_public_key }}
-      AllowedIPs = 10.0.0.{{ next_ip }}/32
+      AllowedIPs = 10.0.0.{{ client_ip_addr }}/32
     insertafter: EOF
-  notify: restart wireguard
+  notify:
+    - restart wireguard
+    - restart dnsmasq
+  when: not mode_update
 
 - name: Get server public key
   ansible.builtin.slurp:
     src: /etc/wireguard/server_public.key
   register: server_public_key_b64
 
+- name: Get WireGuard listening port
+  ansible.builtin.shell: grep "^ListenPort" /etc/wireguard/wg0.conf | awk '{print $3}'
+  register: wg_port_raw
+  changed_when: false
+  failed_when: false
+
 - name: Create client configuration file
   ansible.builtin.template:
     src: client.conf.j2
     dest: "{{ client_name }}.conf"
   vars:
-    server_public_key: "{{ server_public_key_b64['content'] | b64decode }}"
+    server_public_key: "{{ server_public_key_b64['content'] | b64decode | trim }}"
     wireguard_port: "{{ wg_port_raw.stdout | default('51820', true) }}"
 
 - name: Fetch client configuration file

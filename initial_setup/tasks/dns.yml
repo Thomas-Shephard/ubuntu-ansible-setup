@@ -8,6 +8,14 @@
   retries: 10
   delay: 10
 
+- name: Allow DNS (53/udp) on VPN interface
+  community.general.ufw:
+    rule: allow
+    port: '53'
+    proto: udp
+    direction: in
+    interface: wg0
+
 - name: Configure dnsmasq for internal domain
   ansible.builtin.copy:
     dest: /etc/dnsmasq.d/internal.conf
@@ -15,10 +23,11 @@
       listen-address=10.0.0.1
       bind-interfaces
       address=/status.internal/10.0.0.1
-      server=1.1.1.1
       server=8.8.8.8
+      server=8.8.4.4
       domain-needed
       bogus-priv
+      no-hosts
     mode: '0644'
   notify: restart dnsmasq
 
