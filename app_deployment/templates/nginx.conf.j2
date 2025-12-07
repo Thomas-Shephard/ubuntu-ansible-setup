@@ -1,6 +1,7 @@
 server {
     listen 80;
     server_name {{ app_domain_name }};
+    server_tokens off;
 
     location / {
         proxy_pass http://localhost:{{ app_port }};
@@ -14,6 +15,7 @@ server {
 server {
     listen 80;
     server_name webhook.{{ app_domain_name }};
+    server_tokens off;
 
     location / {
         limit_req zone=webhook burst=10 nodelay;

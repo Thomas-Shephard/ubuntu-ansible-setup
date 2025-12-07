@@ -3,6 +3,7 @@ import os
 import requests
 import threading
 import fcntl
+import subprocess
 
 app = Flask(__name__)
 
@@ -91,7 +92,7 @@ def run_update_async(repo_name, app_user, repo_full_name, commit_sha, github_tok
 @app.route('/webhook', methods=['POST'])
 def webhook():
     # Verify the signature
-    signature = request.headers.get('X-Hub-Signature')
+    signature = request.headers.get('X-Hub-Signature-256')
     if not signature:
         return "Signature missing", 401
 
@@ -107,36 +108,45 @@ def webhook():
     event = request.headers.get('X-GitHub-Event')
     if event == "push":
         payload = request.get_json()
-        if payload['ref'] == 'refs/heads/master':
-            repo_name = payload['repository']['name']
-            repo_full_name = payload['repository']['full_name']
-            commit_sha = payload['head_commit']['id']
+        
+        # Parse ref to get branch
+        ref = payload.get('ref', '')
+        if not ref.startswith('refs/heads/'):
+            return "Not a branch push", 200
+        
+        pushed_branch = ref.replace('refs/heads/', '')
+        repo_name = payload['repository']['name']
+        repo_full_name = payload['repository']['full_name']
+        commit_sha = payload['head_commit']['id']
             
-            # Load configuration
-            repos_config = load_repos_config()
+        # Load configuration
+        repos_config = load_repos_config()
 
-            # Find user for repo
-            app_user = None
-            deployment_context = "deployment/production" # Default
+        # Find config for repo
+        repo_config = None
+        for repo in repos_config:
+            if repo['name'] == repo_name:
+                repo_config = repo
+                break
 
-            for repo in repos_config:
-                if repo['name'] == repo_name:
-                    app_user = repo['user']
-                    if 'context' in repo:
-                        deployment_context = repo['context']
-                    break
+        if not repo_config:
+            return "Repository not authorized", 403
 
-            if not app_user:
-                return "Repository not authorized", 403
+        app_user = repo_config['user']
+        target_branch = repo_config.get('branch', 'master') 
+        deployment_context = repo_config.get('context', 'deployment/production')
 
-            github_token = os.environ.get("GITHUB_TOKEN")
+        if pushed_branch != target_branch:
+             return f"Ignored push to {pushed_branch}. Configured for {target_branch}.", 200
 
-            if github_token:
-                threading.Thread(target=run_update_async, args=(repo_name, app_user, repo_full_name, commit_sha, github_token, deployment_context)).start()
-                return "Update queued with status reporting.", 202 # Use 202 Accepted for async processing
-            else:
-                subprocess.Popen(['sudo', '/opt/webhook/update.sh', repo_name, app_user])
-                return "Update triggered (no status reporting).", 200
+        github_token = os.environ.get("GITHUB_TOKEN")
+
+        if github_token:
+            threading.Thread(target=run_update_async, args=(repo_name, app_user, repo_full_name, commit_sha, github_token, deployment_context, target_branch)).start()
+            return "Update queued with status reporting.", 202
+        else:
+            subprocess.Popen(['sudo', '/opt/webhook/update.sh', repo_name, app_user, target_branch])
+            return "Update triggered (no status reporting).", 200
 
     return "Event not handled", 200
 

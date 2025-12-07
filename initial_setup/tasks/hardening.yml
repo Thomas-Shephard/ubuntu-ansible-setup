@@ -46,6 +46,11 @@
     delete: yes
   when: old_ssh_port | string != ssh_port | string and old_ssh_port | length > 0
 
+- name: Set UFW default policy
+  community.general.ufw:
+    policy: deny
+    direction: incoming
+
 - name: Enable UFW
   community.general.ufw:
     state: enabled
@@ -85,12 +90,12 @@ APT::Periodic::Unattended-Upgrade "1";'
     append: yes
     state: present
 
-- name: Add new user to sudoers (without password)
+- name: Add new user to sudoers
   ansible.builtin.lineinfile:
     path: /etc/sudoers.d/{{ new_user }}
     create: yes
     mode: '0440'
-    line: "{{ new_user }} ALL=(ALL) NOPASSWD: ALL"
+    line: "{{ new_user }} ALL=(ALL) ALL"
     validate: /usr/sbin/visudo -cf %s
 
 - name: Set authorized key for new user
@@ -117,11 +122,39 @@ APT::Periodic::Unattended-Upgrade "1";'
     validate: /usr/sbin/sshd -t -f %s
   notify: restart sshd
 
-- name: Disable password authentication for root
+- name: Disable Challenge Response Authentication
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?ChallengeResponseAuthentication'
+    line: "ChallengeResponseAuthentication no"
+    state: present
+    validate: /usr/sbin/sshd -t -f %s
+  notify: restart sshd
+
+
+- name: Disable X11 Forwarding
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?X11Forwarding'
+    line: "X11Forwarding no"
+    state: present
+    validate: /usr/sbin/sshd -t -f %s
+  notify: restart sshd
+
+- name: Disable Password Authentication
   ansible.builtin.lineinfile:
     path: /etc/ssh/sshd_config
     regexp: '^#?PasswordAuthentication'
     line: "PasswordAuthentication no"
+    state: present
+    validate: /usr/sbin/sshd -t -f %s
+  notify: restart sshd
+
+- name: Disable Empty Passwords
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PermitEmptyPasswords'
+    line: "PermitEmptyPasswords no"
     state: present
     validate: /usr/sbin/sshd -t -f %s
   notify: restart sshd

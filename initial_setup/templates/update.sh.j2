@@ -14,6 +14,12 @@ if [ "$APP_USER" = "root" ]; then
     exit 1
 fi
 
+# Sanitize APP_USER input to prevent directory traversal or injection
+if [[ ! "$APP_USER" =~ ^[a-z0-9_-]+$ ]]; then
+    echo "Error: Invalid APP_USER format. Only alphanumeric characters, hyphens, and underscores are allowed."
+    exit 1
+fi
+
 APP_DIR="/home/$APP_USER/app"
 ENV_EXAMPLE_PATH="$APP_DIR/.env.example"
 ENV_PATH="$APP_DIR/.env"

@@ -1,0 +1,11 @@
+# Ansible
+*.retry
+*.log
+
+# SSH Keys
+*.pem
+*.key
+
+# Secrets
+**/secrets.yml
+.env

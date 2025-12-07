@@ -15,11 +15,6 @@
     port: "{{ vpn_port }}"
     proto: udp
 
-- name: Allow all traffic from VPN subnet
-  community.general.ufw:
-    rule: allow
-    src: '10.0.0.0/24'
-
 - name: Create WireGuard configuration directory
   ansible.builtin.file:
     path: /etc/wireguard

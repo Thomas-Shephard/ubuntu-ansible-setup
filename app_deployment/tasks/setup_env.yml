@@ -122,6 +122,7 @@
       {% endfor %}
       {{ inputs }}
   when: prompt_results.results is defined
+  no_log: true
 
 - name: Ensure user_env_inputs_processed is a dictionary
   ansible.builtin.set_fact:
@@ -148,3 +149,4 @@
   when: user_env_inputs_processed is defined and user_env_inputs_processed | length > 0
   become: yes
   become_user: "{{ app_user }}"
+  no_log: true

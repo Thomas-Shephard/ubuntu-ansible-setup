@@ -1,5 +1,26 @@
 ---
 - hosts: all
   become: yes
+  
+  pre_tasks:
+    - name: Verify that secrets.yml exists
+      ansible.builtin.stat:
+        path: initial_setup/vars/secrets.yml
+      delegate_to: localhost
+      become: no
+      register: secrets_check
+
+    - name: Fail if secrets.yml is missing
+      ansible.builtin.fail:
+        msg: >
+          The secrets file is missing!
+          Please copy 'initial_setup/vars/secrets.example.yml' to 'initial_setup/vars/secrets.yml'
+          and update it with your passwords and keys before running this playbook.
+      when: not secrets_check.stat.exists
+
+    - name: Load secrets
+      ansible.builtin.include_vars:
+        file: initial_setup/vars/secrets.yml
+
   roles:
     - initial_setup

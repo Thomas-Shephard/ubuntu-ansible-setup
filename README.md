@@ -28,17 +28,24 @@ This playbook performs the initial, one-time server setup. It hardens the server
     ```
 
 2.  **Configure Server Variables:**
-    Open `initial_setup/vars/main.yml` and configure the server settings:
-    - `new_user`: The username for your new, non-root administrative user.
+
+    **Sensitive Variables:**
+    Copy the example secrets file to a real secrets file (which is ignored by Git):
+
+    Open `initial_setup/vars/secrets.yml` and set:
     - `new_user_password`: The password for this user.
-    - `new_user_ssh_key`: Your public SSH key. This will be the **only** way to log in as the new user.
-    - `ssh_port`: The port for SSH (defaults to `22`).
     - `webhook_secret`: A secret string for securing the GitHub webhook.
+    - `github_pat`: (Optional) A GitHub Personal Access Token.
+    - `new_user_ssh_key`: Your public SSH key.
+
+    **General Variables:**
+    Open `initial_setup/vars/main.yml` and configure:
+    - `new_user`: The username for your new, non-root administrative user.
+    - `ssh_port`: The port for SSH (defaults to `22`).
     - `vpn_port`: The UDP port for WireGuard (defaults to `51820`).
-    - `github_pat`: (Optional) A GitHub Personal Access Token with `repo:status` scope. If provided, the webhook will update commit statuses (Pending/Success/Failure) on your repository.
 
 3.  **Run the Setup Playbook:**
-    Execute the `setup.yml` playbook. You will be prompted for the root user's password.
+    Execute the `setup.yml` playbook.
     ```bash
     ansible-playbook -i inventory setup.yml --ask-pass --ask-become-pass
     ```
@@ -74,9 +81,9 @@ After the initial setup is complete, you can deploy one or more applications by 
     
     3. **Run the Deployment Playbook:**
         Execute the `deploy.yml` playbook.
-        ```bash
-        ansible-playbook -i inventory deploy.yml
-        ```
+            ```bash
+            ansible-playbook -i inventory deploy.yml --ask-become-pass
+            ```
         If your application's repository contains a `.env.example` file, Ansible will prompt you to enter values for each variable.
     
     4. **Set up the GitHub Webhook:**
@@ -104,7 +111,7 @@ After the initial setup is complete, you can deploy one or more applications by 
     
     2.  **Run the Playbook:**
         ```bash
-        ansible-playbook -i inventory add_client.yml
+        ansible-playbook -i inventory add_client.yml --ask-become-pass
         ```
         This will generate a `<client_name>.conf` file in the project root.
     
@@ -140,7 +147,7 @@ After the initial setup is complete, you can deploy one or more applications by 
     If a webhook deployment fails (e.g., due to new variables in `.env.example` that require input), the system will reject the update to prevent crashing the app.
     **Fix:** Run the Ansible deployment playbook manually to interactively provide the new values:
     ```bash
-    ansible-playbook -i inventory deploy.yml
+    ansible-playbook -i inventory deploy.yml --ask-become-pass
     ```
     
     #### Checking Webhook Service
