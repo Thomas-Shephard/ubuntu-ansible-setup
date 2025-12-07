@@ -28,10 +28,10 @@ if [ -d "$APP_DIR" ]; then
   # 2. Check for new environment variables
   if [ -f "$ENV_EXAMPLE_PATH" ]; then
     # Use sudo cat to read files that might be 0600 owned by app_user
-    ENV_EXAMPLE_KEYS=$(sudo -u "$APP_USER" cat "$ENV_EXAMPLE_PATH" | grep -oP '^[A-Z_]+(?==)' | sort)
+    ENV_EXAMPLE_KEYS=$(sudo -u "$APP_USER" cat "$ENV_EXAMPLE_PATH" | grep -E '^[[:space:]]*([A-Za-z0-9_.-]+)=' | sed -E 's/^[[:space:]]*([A-Za-z0-9_.-]+)=.*/\1/' | sort)
 
     if sudo -u "$APP_USER" test -f "$ENV_PATH"; then
-      EXISTING_ENV_KEYS=$(sudo -u "$APP_USER" cat "$ENV_PATH" | grep -oP '^[A-Z_]+(?==)' | sort)
+      EXISTING_ENV_KEYS=$(sudo -u "$APP_USER" cat "$ENV_PATH" | grep -E '^[[:space:]]*([A-Za-z0-9_.-]+)=' | sed -E 's/^[[:space:]]*([A-Za-z0-9_.-]+)=.*/\1/' | sort)
     else
       EXISTING_ENV_KEYS=""
     fi
