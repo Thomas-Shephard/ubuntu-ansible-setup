@@ -60,6 +60,7 @@
     src: wg0.conf.j2
     dest: /etc/wireguard/wg0.conf
     mode: '0600'
+    force: no
   vars:
     server_private_key:
       stdout: "{{ server_private_key_content['content'] | b64decode | trim }}"

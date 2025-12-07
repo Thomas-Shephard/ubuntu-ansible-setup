@@ -21,11 +21,14 @@
     {%- for app_name, ports in apps.items() %}
     <h2>{{ app_name }}</h2>
     <ul>
+        {%- set host_address = ports.internal_domain if ports.internal_domain is defined else ansible_host %}
         {%- for port_name, host_port in ports.items() %}
+            {%- if port_name != 'internal_domain' %}
         <li>
             <strong>{{ port_name.replace('_PORT', '').replace('_', ' ').title() }}:</strong>
-            <a href="http://{{ ansible_host }}:{{ host_port }}" target="_blank">http://{{ ansible_host }}:{{ host_port }}</a>
+            <a href="http://{{ host_address }}:{{ host_port }}" target="_blank">http://{{ host_address }}:{{ host_port }}</a>
         </li>
+            {%- endif %}
         {%- endfor %}
     </ul>
     {%- endfor %}

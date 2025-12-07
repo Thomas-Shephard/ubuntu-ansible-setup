@@ -31,3 +31,9 @@
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
     DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout }}/bus"
+
+- name: restart dnsmasq
+  ansible.builtin.service:
+    name: dnsmasq
+    state: restarted
+  become: yes

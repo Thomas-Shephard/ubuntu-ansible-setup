@@ -159,7 +159,7 @@
 
 - name: Update apps.json
   ansible.builtin.copy:
-    content: "{{ existing_apps_config | default({}) | combine({app_user: found_ports}) | to_json }}"
+    content: "{{ existing_apps_config | default({}) | combine({app_user: found_ports | combine({'internal_domain': app_domain_name ~ '.internal'})}) | to_json }}"
     dest: /var/www/status/apps.json
   when: apps_json_content.content is defined
 
@@ -189,6 +189,14 @@
 
 - name: Setup Nginx and SSL
   ansible.builtin.include_tasks: setup_nginx.yml
+
+- name: Create internal DNS record
+  ansible.builtin.copy:
+    dest: "/etc/dnsmasq.d/{{ app_user }}.conf"
+    content: "address=/{{ app_domain_name }}.internal/10.0.0.1"
+    mode: '0644'
+  become: yes
+  notify: restart dnsmasq
 
 - name: Register app with webhook listener
   ansible.builtin.template:

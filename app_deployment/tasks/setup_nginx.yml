@@ -5,12 +5,27 @@
     dest: "/etc/nginx/sites-available/{{ app_domain_name }}"
   notify: restart nginx
 
+- name: Create internal Nginx site configuration
+  ansible.builtin.template:
+    src: nginx_internal.conf.j2
+    dest: "/etc/nginx/sites-available/{{ app_domain_name }}.internal"
+  notify: restart nginx
+  become: yes
+
 - name: Enable Nginx site
   ansible.builtin.file:
     src: "/etc/nginx/sites-available/{{ app_domain_name }}"
     dest: "/etc/nginx/sites-enabled/{{ app_domain_name }}"
     state: link
   notify: restart nginx
+
+- name: Enable internal Nginx site
+  ansible.builtin.file:
+    src: "/etc/nginx/sites-available/{{ app_domain_name }}.internal"
+    dest: "/etc/nginx/sites-enabled/{{ app_domain_name }}.internal"
+    state: link
+  notify: restart nginx
+  become: yes
 
 - name: Ensure Nginx is running (flush handlers)
   ansible.builtin.meta: flush_handlers
@@ -33,7 +48,12 @@
     - "webhook.{{ app_domain_name }}"
   register: dig_results
   changed_when: false
-  failed_when: item.stdout | trim != ansible_host
+
+- name: Fail if DNS does not resolve to this host
+  ansible.builtin.fail:
+    msg: "DNS for {{ item.item }} resolves to {{ item.stdout | trim }}, but expected {{ ansible_host }}. Please update your DNS records."
+  loop: "{{ dig_results.results }}"
+  when: item.stdout | trim != ansible_host
 
 - name: Request Let's Encrypt Certificate
   ansible.builtin.command:
