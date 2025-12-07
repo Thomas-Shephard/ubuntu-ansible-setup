@@ -34,7 +34,6 @@ This playbook performs the initial, one-time server setup. It hardens the server
     - `new_user_ssh_key`: Your public SSH key. This will be the **only** way to log in as the new user.
     - `ssh_port`: The port for SSH (defaults to `22`).
     - `webhook_secret`: A secret string for securing the GitHub webhook.
-    - `webhook_port`: The port for the webhook listener (defaults to `5000`).
     - `vpn_port`: The UDP port for WireGuard (defaults to `51820`).
     - `github_pat`: (Optional) A GitHub Personal Access Token with `repo:status` scope. If provided, the webhook will update commit statuses (Pending/Success/Failure) on your repository.
 

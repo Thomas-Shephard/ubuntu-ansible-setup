@@ -5,6 +5,5 @@ new_user_password: "placeholder_password"
 new_user_ssh_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQD..."
 ssh_port: 22
 webhook_secret: "your_webhook_secret"
-webhook_port: 5000
 vpn_port: 51820
 github_pat: "" # Optional: GitHub Personal Access Token for commit status updates. Required scopes: repo:status.

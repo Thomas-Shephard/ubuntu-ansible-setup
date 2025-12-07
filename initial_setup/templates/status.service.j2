@@ -5,7 +5,7 @@ After=network.target
 [Service]
 User=root
 WorkingDirectory=/var/www/status
-ExecStart=/usr/bin/gunicorn --workers 2 --bind 0.0.0.0:5001 --access-logfile - --error-logfile - status_server:app
+ExecStart=/usr/bin/gunicorn --workers 2 --bind 127.0.0.1:5001 --access-logfile - --error-logfile - status_server:app
 Restart=always
 
 [Install]
