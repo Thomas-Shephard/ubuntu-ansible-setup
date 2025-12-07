@@ -7,4 +7,4 @@ ssh_port: 22
 webhook_secret: "your_webhook_secret"
 webhook_port: 5000
 vpn_port: 51820
-status_port: 5001
+github_pat: "" # Optional: GitHub Personal Access Token for commit status updates. Required scopes: repo:status.
