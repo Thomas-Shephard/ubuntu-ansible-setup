@@ -3,9 +3,10 @@ Description=Webhook Listener
 After=network.target
 
 [Service]
-User={{ new_user }}
-WorkingDirectory=/home/{{ new_user }}
+User=webhook
+WorkingDirectory=/opt/webhook
 ExecStart=/usr/bin/gunicorn --workers 2 --bind 0.0.0.0:{{ webhook_port }} --access-logfile - --error-logfile - webhook_listener:app
+{{ github_token_env }}
 Restart=always
 
 [Install]

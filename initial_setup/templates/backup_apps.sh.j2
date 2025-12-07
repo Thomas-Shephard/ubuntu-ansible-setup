@@ -1,0 +1,63 @@
+#!/bin/bash
+
+BACKUP_DIR="/var/backups/apps"
+DATE=$(date +%Y-%m-%d)
+ARCHIVE_NAME="apps_backup_$DATE.tar.gz"
+TEMP_DIR=$(mktemp -d)
+
+# Ensure backup directory exists
+mkdir -p "$BACKUP_DIR"
+
+echo "Starting backup for $DATE..."
+
+# Loop through home directories
+for user_home in /home/*; do
+    user=$(basename "$user_home")
+    app_dir="$user_home/app"
+
+    # Check if app directory exists
+    if [ -d "$app_dir" ]; then
+        echo "Found app for user: $user"
+
+        # Create a directory for this user in the temp folder
+        mkdir -p "$TEMP_DIR/$user"
+
+        # Copy .env if it exists
+        if [ -f "$app_dir/.env" ]; then
+            cp "$app_dir/.env" "$TEMP_DIR/$user/.env"
+        fi
+
+        # Copy docker-compose.yml if it exists
+        if [ -f "$app_dir/docker-compose.yml" ]; then
+            cp "$app_dir/docker-compose.yml" "$TEMP_DIR/$user/docker-compose.yml"
+        fi
+
+        # Copy config folder if it exists
+         if [ -d "$app_dir/config" ]; then
+            cp -r "$app_dir/config" "$TEMP_DIR/$user/config"
+        fi
+
+        # Copy local backups folder if it exists
+        if [ -d "$app_dir/backups" ]; then
+            cp -r "$app_dir/backups" "$TEMP_DIR/$user/backups"
+        fi
+    fi
+done
+
+# Create the archive
+if [ -n "$(ls -A $TEMP_DIR)" ]; then
+    tar -czf "$BACKUP_DIR/$ARCHIVE_NAME" -C "$TEMP_DIR" .
+    echo "Backup created at $BACKUP_DIR/$ARCHIVE_NAME"
+
+    # Set permissions (root read only)
+    chmod 600 "$BACKUP_DIR/$ARCHIVE_NAME"
+else
+    echo "No app files found to backup."
+fi
+
+# Cleanup temp
+rm -rf "$TEMP_DIR"
+
+# Rotation: Delete backups older than 7 days
+find "$BACKUP_DIR" -name "apps_backup_*.tar.gz" -mtime +7 -delete
+echo "Old backups pruned."

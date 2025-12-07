@@ -1,10 +1,92 @@
-from flask import Flask, request
-import subprocess
-import hmac
-import hashlib
 import json
+import os
+import requests
+import threading
+import fcntl
 
 app = Flask(__name__)
+
+def load_repos_config():
+    repos_config = []
+    conf_dir = '/opt/webhook/conf.d'
+    if os.path.exists(conf_dir):
+        for filename in os.listdir(conf_dir):
+            if filename.endswith('.json'):
+                filepath = os.path.join(conf_dir, filename)
+                try:
+                    with open(filepath, 'r') as f:
+                        # Expecting each file to contain a single dict or list of dicts
+                        data = json.load(f)
+                        if isinstance(data, list):
+                            repos_config.extend(data)
+                        elif isinstance(data, dict):
+                            repos_config.append(data)
+                except Exception as e:
+                    print(f"Error loading config {filename}: {e}")
+    return repos_config
+
+def send_github_status(repo_full_name, commit_sha, status, description, github_token, context, target_url=None):
+    if not github_token:
+        print("GitHub token not found, skipping status update.")
+        return
+
+    url = f"https://api.github.com/repos/{repo_full_name}/statuses/{commit_sha}"
+    headers = {
+        "Authorization": f"token {github_token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    data = {
+        "state": status, # can be 'pending', 'success', 'error', or 'failure'
+        "description": description,
+        "context": context
+    }
+    if target_url:
+        data["target_url"] = target_url
+
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status() # Raise an exception for HTTP errors (4xx or 5xx)
+        print(f"GitHub status '{status}' sent for {repo_full_name}#{commit_sha}")
+    except requests.exceptions.RequestException as e:
+        print(f"Error sending GitHub status for {repo_full_name}#{commit_sha}: {e}")
+
+def run_update_async(repo_name, app_user, repo_full_name, commit_sha, github_token, context, branch):
+    # Initial status: pending (queued)
+    send_github_status(repo_full_name, commit_sha, "pending", "Deployment is queued.", github_token, context)
+
+    lock_path = f"/tmp/webhook-{repo_name}.lock"
+
+    try:
+        with open(lock_path, 'w') as lock_file:
+            # Acquire exclusive lock. This blocks until the lock is available.
+            fcntl.flock(lock_file, fcntl.LOCK_EX)
+            
+            # Update status to indicate processing started
+            send_github_status(repo_full_name, commit_sha, "pending", "Deployment is in progress.", github_token, context)
+
+            try:
+                # Added timeout of 300 seconds (5 minutes)
+                result = subprocess.run(['sudo', '/opt/webhook/update.sh', repo_name, app_user, branch], check=True, capture_output=True, text=True, timeout=300)
+                print(f"Update script stdout for {repo_full_name}:\n{result.stdout}")
+                if result.stderr:
+                    print(f"Update script stderr for {repo_full_name}:\n{result.stderr}")
+                send_github_status(repo_full_name, commit_sha, "success", "Deployment completed successfully.", github_token, context)
+            except subprocess.TimeoutExpired as e:
+                print(f"Update script timed out for {repo_full_name}: {e}")
+                send_github_status(repo_full_name, commit_sha, "failure", "Deployment timed out after 5 minutes.", github_token, context)
+            except subprocess.CalledProcessError as e:
+                print(f"Update script failed for {repo_full_name}: {e}")
+                print(f"Update script stdout for {repo_full_name}:\n{e.stdout}")
+                print(f"Update script stderr for {repo_full_name}:\n{e.stderr}")
+                send_github_status(repo_full_name, commit_sha, "failure", f"Deployment failed: {e.returncode}", github_token, context)
+            finally:
+                # Release lock
+                fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+    except Exception as e:
+        print(f"An unexpected error occurred during deployment for {repo_full_name}: {e}")
+        send_github_status(repo_full_name, commit_sha, "error", f"Deployment error: {e}", github_token, context)
+
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -14,10 +96,10 @@ def webhook():
         return "Signature missing", 401
 
     sha_name, signature = signature.split('=')
-    if sha_name != 'sha1':
+    if sha_name != 'sha256':
         return "Invalid signature type", 401
 
-    mac = hmac.new(b'{{ webhook_secret }}', msg=request.data, digestmod=hashlib.sha1)
+    mac = hmac.new(b'{{ webhook_secret }}', msg=request.data, digestmod=hashlib.sha256)
     if not hmac.compare_digest(mac.hexdigest(), signature):
         return "Invalid signature", 401
 
@@ -27,12 +109,34 @@ def webhook():
         payload = request.get_json()
         if payload['ref'] == 'refs/heads/master':
             repo_name = payload['repository']['name']
-            # Calculate app_user: Linux users are limited to 32 chars.
-            # We assume the repo name corresponds to the user, truncated.
-            app_user = repo_name[:32]
+            repo_full_name = payload['repository']['full_name']
+            commit_sha = payload['head_commit']['id']
             
-            subprocess.Popen(['/home/{{ new_user }}/update.sh', repo_name, app_user])
-            return "Update triggered for " + repo_name, 200
+            # Load configuration
+            repos_config = load_repos_config()
+
+            # Find user for repo
+            app_user = None
+            deployment_context = "deployment/production" # Default
+
+            for repo in repos_config:
+                if repo['name'] == repo_name:
+                    app_user = repo['user']
+                    if 'context' in repo:
+                        deployment_context = repo['context']
+                    break
+
+            if not app_user:
+                return "Repository not authorized", 403
+
+            github_token = os.environ.get("GITHUB_TOKEN")
+
+            if github_token:
+                threading.Thread(target=run_update_async, args=(repo_name, app_user, repo_full_name, commit_sha, github_token, deployment_context)).start()
+                return "Update queued with status reporting.", 202 # Use 202 Accepted for async processing
+            else:
+                subprocess.Popen(['sudo', '/opt/webhook/update.sh', repo_name, app_user])
+                return "Update triggered (no status reporting).", 200
 
     return "Event not handled", 200
 

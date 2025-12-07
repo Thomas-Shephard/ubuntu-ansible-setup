@@ -1,5 +1,0 @@
----
-- hosts: servers
-  become: yes
-  roles:
-    - remove_app

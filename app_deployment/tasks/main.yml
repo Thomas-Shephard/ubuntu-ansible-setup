@@ -177,6 +177,7 @@
     dest: "/home/{{ app_user }}/app"
     accept_hostkey: yes
     force: yes
+    version: "{{ app_branch }}"
   become: yes
   become_user: "{{ app_user }}"
 
@@ -188,3 +189,13 @@
 
 - name: Setup Nginx and SSL
   ansible.builtin.include_tasks: setup_nginx.yml
+
+- name: Register app with webhook listener
+  ansible.builtin.template:
+    src: webhook_config.json.j2
+    dest: "/opt/webhook/conf.d/{{ app_user }}.json"
+    owner: root
+    group: webhook
+    mode: '0640'
+  become: yes
+  notify: restart webhook

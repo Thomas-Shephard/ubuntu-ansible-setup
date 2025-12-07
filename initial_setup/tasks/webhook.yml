@@ -8,6 +8,7 @@
       - virtualenv
       - python3-setuptools
       - gunicorn
+      - python3-requests # Added for GitHub API interaction
     state: present
   become: yes
   register: apt_install_python_result
@@ -15,33 +16,68 @@
   retries: 10
   delay: 10
 
+- name: Create webhook group
+  ansible.builtin.group:
+    name: webhook
+    state: present
+
+- name: Create webhook user
+  ansible.builtin.user:
+    name: webhook
+    group: webhook
+    shell: /usr/sbin/nologin
+    home: /opt/webhook
+    create_home: no
+    state: present
+
+- name: Create webhook directory
+  ansible.builtin.file:
+    path: /opt/webhook
+    state: directory
+    owner: webhook
+    group: webhook
+    mode: '0750'
+
+- name: Create webhook config directory
+  ansible.builtin.file:
+    path: /opt/webhook/conf.d
+    state: directory
+    owner: root
+    group: webhook
+    mode: '0750'
+
 - name: Create webhook listener script
   ansible.builtin.template:
     src: webhook_listener.py.j2
-    dest: "/home/{{ new_user }}/webhook_listener.py"
-    owner: "{{ new_user }}"
-    group: "{{ new_user }}"
-    mode: '0755'
+    dest: /opt/webhook/webhook_listener.py
+    owner: webhook
+    group: webhook
+    mode: '0700'
+  notify: restart webhook
 
 - name: Create update script
   ansible.builtin.template:
     src: update.sh.j2
-    dest: "/home/{{ new_user }}/update.sh"
-    owner: "{{ new_user }}"
-    group: "{{ new_user }}"
+    dest: /opt/webhook/update.sh
+    owner: root
+    group: root
     mode: '0755'
+
+- name: Configure sudoers for webhook user
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers.d/webhook
+    create: yes
+    mode: '0440'
+    line: "webhook ALL=(root) NOPASSWD: /opt/webhook/update.sh"
+    validate: /usr/sbin/visudo -cf %s
 
 - name: Create systemd service for webhook listener
   ansible.builtin.template:
     src: webhook.service.j2
     dest: /etc/systemd/system/webhook.service
+  vars:
+    github_token_env: "{% if github_pat %}Environment=GITHUB_TOKEN={{ github_pat }}{% endif %}"
   notify: restart webhook
-
-- name: Allow webhook through UFW
-  community.general.ufw:
-    rule: allow
-    port: "{{ webhook_port }}"
-    proto: tcp
 
 - name: Ensure webhook service is enabled and started
   ansible.builtin.systemd:

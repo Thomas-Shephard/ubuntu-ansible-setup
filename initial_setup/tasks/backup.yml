@@ -1,0 +1,31 @@
+---
+# tasks file for backup setup
+
+- name: Install tar
+  ansible.builtin.apt:
+    name:
+      - tar
+    state: present
+
+- name: Create backup directory
+  ansible.builtin.file:
+    path: /var/backups/apps
+    state: directory
+    mode: '0700'
+    owner: root
+    group: root
+
+- name: Deploy backup script
+  ansible.builtin.template:
+    src: backup_apps.sh.j2
+    dest: /usr/local/bin/backup_apps.sh
+    mode: '0700'
+    owner: root
+    group: root
+
+- name: Schedule daily backup
+  ansible.builtin.cron:
+    name: "Daily App Backup"
+    minute: "0"
+    hour: "3"
+    job: "/usr/local/bin/backup_apps.sh"

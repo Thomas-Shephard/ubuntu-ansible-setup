@@ -1,0 +1,6 @@
+{
+  "name": "{{ app_repo | basename | splitext | first }}",
+  "user": "{{ app_user }}",
+  "context": "{{ app_deployment_context }}",
+  "branch": "{{ app_branch }}"
+}

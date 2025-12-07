@@ -1,14 +1,17 @@
 ---
 # handlers file for app_deployment
-- name: restart webhook
-  ansible.builtin.systemd:
-    name: webhook
-    state: restarted
-
 - name: restart nginx
   ansible.builtin.service:
     name: nginx
     state: restarted
+  become: yes
+
+- name: restart webhook
+  ansible.builtin.service:
+    name: webhook
+    state: restarted
+  become: yes
+
 
 - name: restart apparmor
   ansible.builtin.service:

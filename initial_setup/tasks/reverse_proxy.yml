@@ -23,3 +23,14 @@
     name: nginx
     enabled: yes
     state: started
+
+- name: Configure Nginx rate limiting for webhooks
+  ansible.builtin.copy:
+    dest: /etc/nginx/conf.d/webhook_rate_limit.conf
+    content: |
+      # Rate limit zone for webhooks
+      # 30 requests per minute per IP, with a burst of 10
+      limit_req_zone $binary_remote_addr zone=webhook:10m rate=30r/m burst=10;
+      limit_req_status 429; # Return 429 Too Many Requests on rate limit exceed
+    mode: '0644'
+  notify: restart nginx

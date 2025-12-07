@@ -1,10 +1,16 @@
 #!/bin/bash
 REPO_NAME=$1
 APP_USER=$2
+BRANCH=${3:-master}
 
 # Ensure APP_USER is provided
 if [ -z "$APP_USER" ]; then
     echo "Error: APP_USER argument missing"
+    exit 1
+fi
+
+if [ "$APP_USER" = "root" ]; then
+    echo "Error: Cannot update for root user"
     exit 1
 fi
 
@@ -13,11 +19,11 @@ ENV_EXAMPLE_PATH="$APP_DIR/.env.example"
 ENV_PATH="$APP_DIR/.env"
 
 if [ -d "$APP_DIR" ]; then
-  echo "Starting update for $REPO_NAME (User: $APP_USER)..."
+  echo "Starting update for $REPO_NAME (User: $APP_USER, Branch: $BRANCH)..."
 
   # 1. Pull latest changes as the app user
   # We use sudo to ensure file permissions remain correct
-  sudo -u "$APP_USER" git -C "$APP_DIR" pull origin master
+  sudo -u "$APP_USER" git -C "$APP_DIR" pull origin "$BRANCH"
 
   # 2. Check for new environment variables
   if [ -f "$ENV_EXAMPLE_PATH" ]; then
@@ -51,6 +57,13 @@ if [ -d "$APP_DIR" ]; then
        DOCKER_HOST="unix:///run/user/$APP_UID/docker.sock" \
        XDG_RUNTIME_DIR="/run/user/$APP_UID" \
        /home/"$APP_USER"/bin/docker compose -f "$APP_DIR/docker-compose.yml" up -d --build
+
+  # 5. Prune dangling images to save space
+  echo "Pruning dangling images..."
+  sudo -u "$APP_USER" \
+       DOCKER_HOST="unix:///run/user/$APP_UID/docker.sock" \
+       XDG_RUNTIME_DIR="/run/user/$APP_UID" \
+       /home/"$APP_USER"/bin/docker image prune -f
 
 else
   echo "Error: App directory $APP_DIR does not exist."

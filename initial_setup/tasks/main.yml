@@ -27,6 +27,9 @@
 - name: Include webhook tasks
   ansible.builtin.include_tasks: webhook.yml
 
+- name: Include backup tasks
+  ansible.builtin.include_tasks: backup.yml
+
 - name: Install prerequisite packages for Docker
   ansible.builtin.apt:
     name:

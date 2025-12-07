@@ -1,7 +1,7 @@
 server {
     listen 80;
     listen [::]:80;
-    server_name {{ app_domain_name }};
+    server_name {{ app_domain_name }} webhook.{{ app_domain_name }};
     return 301 https://$host$request_uri;
 }
 
@@ -15,6 +15,24 @@ server {
 
     location / {
         proxy_pass http://localhost:{{ app_port }};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name webhook.{{ app_domain_name }};
+
+    ssl_certificate /etc/letsencrypt/live/{{ app_domain_name }}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{{ app_domain_name }}/privkey.pem;
+
+    location / {
+        limit_req zone=webhook burst=10 nodelay;
+        proxy_pass http://localhost:{{ webhook_port }};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

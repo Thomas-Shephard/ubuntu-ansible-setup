@@ -25,11 +25,22 @@
     cache_valid_time: 3600
   become: yes
 
+- name: Verify DNS resolution for required domains
+  ansible.builtin.command:
+    cmd: "dig +short A {{ item }}"
+  loop:
+    - "{{ app_domain_name }}"
+    - "webhook.{{ app_domain_name }}"
+  register: dig_results
+  changed_when: false
+  failed_when: item.stdout | trim != ansible_host
+
 - name: Request Let's Encrypt Certificate
   ansible.builtin.command:
     cmd: >
       certbot certonly --nginx
       -d {{ app_domain_name }}
+      -d webhook.{{ app_domain_name }}
       --non-interactive
       --agree-tos
       --email {{ certbot_email }}

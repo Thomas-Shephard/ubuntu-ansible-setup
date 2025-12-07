@@ -6,4 +6,4 @@ DNS = {{ wireguard_dns }}
 [Peer]
 PublicKey = {{ server_public_key }}
 Endpoint = {{ ansible_host }}:{{ wireguard_port }}
-AllowedIPs = 0.0.0.0/0
+AllowedIPs = 10.0.0.0/24
