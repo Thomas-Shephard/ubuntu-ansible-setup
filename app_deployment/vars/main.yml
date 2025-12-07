@@ -3,5 +3,7 @@
 app_repo: "your_app_repo.git"
 app_domain_name: "your_domain.com"
 certbot_email: "email@example.com"
+app_deployment_context: "deployment/production"
+app_branch: "master"
 app_ports:
   - APP_PORT

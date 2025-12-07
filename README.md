@@ -66,7 +66,7 @@ After the initial setup is complete, you can deploy one or more applications by 
 1. **Configure Application Variables:**
     Open `app_deployment/vars/main.yml` and configure your application's settings:
     - `app_repo`: The Git repository URL of your application (e.g., `https://github.com/user/my-cool-app.git`).
-    - `app_branch`: The branch to deploy (defaults to `master`).
+    - `app_branch`: The branch to deploy (defaults to `main`).
     - `app_domain_name`: The domain name that will point to your application.
     - `certbot_email`: Email address for Let's Encrypt expiration notifications.
     - `app_deployment_context`: (Optional) The context label for GitHub status updates (e.g., `deployment/production`). Defaults to `deployment/production`.
