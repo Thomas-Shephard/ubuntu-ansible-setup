@@ -1,6 +1,5 @@
 ---
 # vars file for initial_setup
-# SENSITIVE VARIABLES MOVED TO secrets.yml
 
 new_user: "placeholder_user"
 ssh_port: 22
