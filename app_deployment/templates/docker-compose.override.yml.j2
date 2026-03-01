@@ -1,0 +1,16 @@
+services:
+{% for svc in app_exposed_services %}
+  # Override the {{ svc.name }} service to REMOVE any host port mappings
+  # This prevents port collisions on the server even if the developer hardcoded ports
+  {{ svc.name }}:
+    ports: !reset []
+
+  # Inject a bridge container that proxies Traefik's Unix Socket to the {{ svc.name }} internal port
+  traefik-bridge-{{ svc.name }}:
+    image: alpine/socat
+    restart: always
+    command: UNIX-LISTEN:/sockets/{{ app_user }}-{{ svc.name }}.sock,fork,mode=666 TCP:{{ svc.name }}:{{ svc.port }}
+    volumes:
+      - /opt/traefik/sockets:/sockets
+
+{% endfor %}

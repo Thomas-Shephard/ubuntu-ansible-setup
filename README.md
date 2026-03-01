@@ -70,10 +70,20 @@ After the initial setup is complete, you can deploy one or more applications by 
     - `app_domain_name`: The domain name that will point to your application.
     - `certbot_email`: Email address for Let's Encrypt expiration notifications.
     - `app_deployment_context`: (Optional) The context label for GitHub status updates (e.g., `deployment/production`). Defaults to `deployment/production`.
-        - `app_ports`: A list of environment variable names that your `docker-compose.yml` expects for port mappings. **`APP_PORT` is mandatory** as it is used by the Nginx reverse proxy.
-        > **Note:** The system automatically manages internal host port assignments (8080, 8081, etc.) to prevent conflicts. You do not need to manually assign host ports in your compose file.
-    
-    2. **Point DNS Records:**
+    - `app_exposed_services`: A list defining which services from your `docker-compose.yml` should be accessible from the internet. 
+      ```yaml
+      app_exposed_services:
+        - name: "frontend"                            # Name of the service in docker-compose.yml
+          port: "80"                                  # The port the app runs on INSIDE the container (e.g., 3000 for React, 80 for Nginx). We ignore/wipe host mappings (like 8080:80).
+          rule: "Host(`{{ app_domain_name }}`)"       # Traefik routing rule
+        - name: "api"
+          port: "8080"
+          rule: "Host(`api.{{ app_domain_name }}`)"   # E.g., Expose API on a subdomain
+      ```
+
+    > **Note:** You do **not** need to modify your `docker-compose.yml` for this deployment. Ansible automatically injects a `docker-compose.override.yml` that removes any hardcoded host port mappings and seamlessly bridges traffic from Traefik to your specified internal ports.
+
+2. **Point DNS Records:**
         Ensure that the following DNS records point to your server's IP address:
         - **A Record:** `@` (or your subdomain) -> `your_server_ip`
         - **CNAME/A Record:** `webhook` -> `your_server_ip` (required for automatic deployments)
@@ -169,7 +179,9 @@ After the initial setup is complete, you can deploy one or more applications by 
     
     **Note:** If new keys are added to `.env.example`, a webhook-triggered deployment will fail. You must manually run `ansible-playbook -i inventory deploy.yml` to be prompted for the new secret values.
     
-    #### Service Status Webpage
+    #### Traefik Proxy & Dashboard
     
-    A simple status page is created that lists all deployed services and provides clickable links to access them. This page is accessible **via VPN only** at `http://status.internal`.
+    This setup uses Traefik as the central reverse proxy. Traefik automatically discovers new applications via the File Provider and handles Let's Encrypt SSL certificates automatically.
+    
+    A built-in Traefik Dashboard is available to monitor the status of all active routers and services. (Note: You may want to expose this via a secure internal route in the Traefik configuration).
     

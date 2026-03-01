@@ -136,11 +136,6 @@
       {% for key, value in user_env_inputs_processed.items() %}
       {{ key }}={{ value }}
       {% endfor %}
-
-      # Assigned Ports
-      {% for key, value in found_ports.items() %}
-      {{ key }}={{ value }}
-      {% endfor %}
     dest: "/home/{{ app_user }}/app/.env"
     owner: "{{ app_user }}"
     group: "{{ app_user }}"

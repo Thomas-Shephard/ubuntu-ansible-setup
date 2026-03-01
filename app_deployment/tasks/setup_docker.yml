@@ -11,6 +11,14 @@
     msg: "docker-compose.yml not found in the repository"
   when: not docker_compose_file.stat.exists
 
+- name: Template docker-compose.override.yml
+  ansible.builtin.template:
+    src: docker-compose.override.yml.j2
+    dest: "/home/{{ app_user }}/app/docker-compose.override.yml"
+    mode: '0644'
+  become: yes
+  become_user: "{{ app_user }}"
+
 - name: Create systemd user directory
   ansible.builtin.file:
     path: "/home/{{ app_user }}/.config/systemd/user"
@@ -163,39 +171,6 @@
   ansible.builtin.fail:
     msg: "Deployment failed due to non-running containers. See above debug message for details."
   when: docker_startup_check.failed
-- name: Verify application is responding (Health Check)
-  ansible.builtin.uri:
-    url: "http://localhost:{{ app_port }}"
-    status_code: [200, 301, 302, 307, 308, 401, 403, 404]
-    return_content: no
-  register: app_health_check
-  until: app_health_check.status != -1
-  retries: 10 # 2.5 minutes wait
-  delay: 15
-  become: yes
-  become_user: "{{ app_user }}"
-  failed_when: app_health_check.status == -1
-  ignore_errors: yes
-
-- name: Fetch service logs on health check failure
-  ansible.builtin.command:
-    cmd: "journalctl --user -u app -n 50 --no-pager"
-  register: health_check_logs
-  become: yes
-  become_user: "{{ app_user }}"
-  environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
-  when: app_health_check.failed
-
-- name: Fail with logs if health check failed
-  ansible.builtin.fail:
-    msg: |
-      Application health check failed! The application is not responding at http://localhost:{{ app_port }}
-
-      Recent Logs:
-      {{ health_check_logs.stdout }}
-  when: app_health_check.failed
-
 - name: Prune unused Docker objects
   ansible.builtin.command:
     cmd: "/home/{{ app_user }}/bin/docker system prune -f"

@@ -1,0 +1,9 @@
+---
+- name: Template Traefik dynamic routing rule
+  ansible.builtin.template:
+    src: traefik-rule.yml.j2
+    dest: "/etc/traefik/dynamic/{{ app_user }}.yml"
+    owner: root
+    group: traefik
+    mode: '0644'
+  become: yes

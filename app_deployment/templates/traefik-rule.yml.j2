@@ -1,0 +1,36 @@
+http:
+  routers:
+{% for svc in app_exposed_services %}
+    {{ app_user }}-{{ svc.name }}-router:
+      rule: "{{ svc.rule }}"
+      entryPoints:
+        - websecure
+      service: {{ app_user }}-{{ svc.name }}-service
+      tls:
+        certResolver: myresolver
+
+{% endfor %}
+    {{ app_user }}-webhook-router:
+      rule: "Host(`webhook.{{ app_domain_name }}`)"
+      entryPoints:
+        - websecure
+      service: webhook-service
+      tls:
+        certResolver: myresolver
+
+  services:
+{% for svc in app_exposed_services %}
+    {{ app_user }}-{{ svc.name }}-service:
+      loadBalancer:
+        servers:
+          # This socket is created dynamically by the 'traefik-bridge-{{ svc.name }}' container 
+          # injected via docker-compose.override.yml. It forwards traffic to the {{ svc.name }} app.
+          - url: "http://unix:/opt/traefik/sockets/{{ app_user }}-{{ svc.name }}.sock"
+
+{% endfor %}
+    # Webhook service is centralized on the host, reachable via the host IP.
+    # We use the docker bridge gateway to reach the host.
+    webhook-service:
+      loadBalancer:
+        servers:
+          - url: "http://172.17.0.1:5000"
