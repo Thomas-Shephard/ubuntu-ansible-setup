@@ -1,6 +1,6 @@
 http:
   routers:
-{% for svc in app_exposed_services %}
+{% for svc in app_deployment_exposed_services %}
     {{ app_user }}-{{ svc.name }}-router:
       rule: "{{ svc.rule }}"
       entryPoints:
@@ -10,14 +10,14 @@ http:
         certResolver: myresolver
 
     {{ app_user }}-{{ svc.name }}-internal-router:
-      rule: "Host(`{{ svc.name }}.{{ app_domain_name }}.internal`)"
+      rule: "Host(`{{ svc.name }}.{{ app_deployment_domain_name }}.internal`)"
       entryPoints:
         - web
       service: {{ app_user }}-{{ svc.name }}-service
 
 {% endfor %}
     {{ app_user }}-webhook-router:
-      rule: "Host(`webhook.{{ app_domain_name }}`)"
+      rule: "Host(`webhook.{{ app_deployment_domain_name }}`)"
       entryPoints:
         - websecure
       service: webhook-service
@@ -25,7 +25,7 @@ http:
         certResolver: myresolver
 
   services:
-{% for svc in app_exposed_services %}
+{% for svc in app_deployment_exposed_services %}
     {{ app_user }}-{{ svc.name }}-service:
       loadBalancer:
         servers:

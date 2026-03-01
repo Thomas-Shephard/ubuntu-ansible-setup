@@ -13,7 +13,7 @@
 - name: Allow WireGuard through UFW
   community.general.ufw:
     rule: allow
-    port: "{{ vpn_port }}"
+    port: "{{ vpn_listen_port }}"
     proto: udp
   become: yes
 

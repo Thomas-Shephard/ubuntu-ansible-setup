@@ -1,6 +1,6 @@
 ---
 # vars file for initial_setup
 
-new_user: "placeholder_user"
-ssh_port: 22
-vpn_port: 51820
+security_new_user: "placeholder_user"
+security_ssh_port: 22
+vpn_listen_port: 51820

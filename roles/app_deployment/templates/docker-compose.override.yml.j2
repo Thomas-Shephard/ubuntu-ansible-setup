@@ -1,5 +1,5 @@
 services:
-{% for svc in app_exposed_services %}
+{% for svc in app_deployment_exposed_services %}
   # Override the {{ svc.name }} service to REMOVE any host port mappings
   # This prevents port collisions on the server even if the developer hardcoded ports
   {{ svc.name }}:

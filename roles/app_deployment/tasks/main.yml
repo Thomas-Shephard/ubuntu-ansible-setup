@@ -1,9 +1,9 @@
 ---
 # tasks file for app_deployment
-- name: "Fail if app_repo is not set"
+- name: "Fail if app_deployment_repo is not set"
   ansible.builtin.fail:
-    msg: "The 'app_repo' variable is set to the default placeholder 'your_app_repo.git'. Please provide a valid Git repository URL in app_deployment/vars/main.yml."
-  when: app_repo == 'your_app_repo.git'
+    msg: "The 'app_deployment_repo' variable is set to the default placeholder 'your_app_repo.git'. Please provide a valid Git repository URL in roles/app_deployment/vars/main.yml."
+  when: app_deployment_repo == 'your_app_repo.git'
   run_once: true
 
 - name: Ensure required packages are installed
@@ -14,23 +14,9 @@
     state: present
     update_cache: yes
 
-- name: Check if the git repository is valid and accessible
-  ansible.builtin.command:
-    cmd: "git ls-remote {{ app_repo }}"
-  register: git_check
-  changed_when: false
-  failed_when: false # We handle the failure manually
-  run_once: true
-
-- name: Fail if git repository is not accessible
-  ansible.builtin.fail:
-    msg: "The git repository '{{ app_repo }}' is not accessible. Please check the URL and access rights. Error: {{ git_check.stderr }}"
-  when: git_check.rc != 0
-  run_once: true
-
 - name: Set app_user fact
   ansible.builtin.set_fact:
-    app_user: "{{ (app_repo | basename | regex_replace('.git$', ''))[:32] }}"
+    app_user: "{{ (app_deployment_repo | basename | regex_replace('.git$', ''))[:32] }}"
 
 - name: Create a new system user for the application
   ansible.builtin.user:
@@ -40,6 +26,44 @@
     create_home: yes
     groups: traefik
     append: yes
+
+- name: Ensure .ssh directory exists for app_user
+  ansible.builtin.file:
+    path: "/home/{{ app_user }}/.ssh"
+    state: directory
+    mode: '0700'
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+  become: yes
+  when: app_deployment_deploy_key is defined
+
+- name: Add deploy key for private repository
+  ansible.builtin.copy:
+    content: "{{ app_deployment_deploy_key }}\n"
+    dest: "/home/{{ app_user }}/.ssh/id_rsa"
+    mode: '0600'
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+  become: yes
+  when: app_deployment_deploy_key is defined
+
+- name: Check if the git repository is valid and accessible
+  ansible.builtin.command:
+    cmd: "git ls-remote {{ app_deployment_repo }}"
+  environment:
+    GIT_SSH_COMMAND: "ssh -o StrictHostKeyChecking=accept-new"
+  register: git_check
+  changed_when: false
+  failed_when: false # We handle the failure manually
+  run_once: true
+  become: yes
+  become_user: "{{ app_user }}"
+
+- name: Fail if git repository is not accessible
+  ansible.builtin.fail:
+    msg: "The git repository '{{ app_deployment_repo }}' is not accessible. Please check the URL and access rights. Error: {{ git_check.stderr }}"
+  when: git_check.rc != 0
+  run_once: true
 
 - name: Ensure remote_tmp directory exists for app_user
   ansible.builtin.file:
@@ -65,11 +89,11 @@
 
 - name: Clone the application repository
   ansible.builtin.git:
-    repo: "{{ app_repo }}"
+    repo: "{{ app_deployment_repo }}"
     dest: "/home/{{ app_user }}/app"
     accept_hostkey: yes
     force: yes
-    version: "{{ app_branch }}"
+    version: "{{ app_deployment_branch }}"
   become: yes
   become_user: "{{ app_user }}"
 
@@ -85,7 +109,7 @@
 - name: Create internal DNS record
   ansible.builtin.copy:
     dest: "/etc/dnsmasq.d/{{ app_user }}.conf"
-    content: "address=/{{ app_domain_name }}.internal/10.0.0.1"
+    content: "address=/{{ app_deployment_domain_name }}.internal/10.0.0.1"
     mode: '0644'
   become: yes
   notify: restart dnsmasq

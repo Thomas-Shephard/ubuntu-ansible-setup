@@ -3,12 +3,12 @@
 - name: Validate client name format
   ansible.builtin.fail:
     msg: "Client name must contain only alphanumeric characters, underscores, or hyphens."
-  when: not client_name | regex_search('^[a-zA-Z0-9_-]+$')
+  when: not vpn_client_name | regex_search('^[a-zA-Z0-9_-]+$')
 
 - name: Validate client public key format
   ansible.builtin.fail:
     msg: "Client public key format is invalid. It should be a 44-character Base64 encoded Curve25519 public key."
-  when: not client_public_key | regex_search('^[A-Za-z0-9+/]{43}=?$')
+  when: not vpn_client_public_key | regex_search('^[A-Za-z0-9+/]{43}=?$')
 
 - name: Get WireGuard configuration status
   ansible.builtin.shell: |
@@ -55,25 +55,25 @@
 
 - name: Check for existing client
   vars:
-    peers_by_name: "{{ wg_peers | selectattr('name', 'equalto', client_name) | list }}"
-    peers_by_key: "{{ wg_peers | selectattr('public_key', 'equalto', client_public_key) | list }}"
+    peers_by_name: "{{ wg_peers | selectattr('name', 'equalto', vpn_client_name) | list }}"
+    peers_by_key: "{{ wg_peers | selectattr('public_key', 'equalto', vpn_client_public_key) | list }}"
   ansible.builtin.set_fact:
     existing_peer_by_name: "{{ peers_by_name | first if peers_by_name else {} }}"
     existing_peer_by_key: "{{ peers_by_key | first if peers_by_key else {} }}"
 
 - name: Fail if name is taken by different key
   ansible.builtin.fail:
-    msg: "Client name '{{ client_name }}' is already in use by a different key."
+    msg: "Client name '{{ vpn_client_name }}' is already in use by a different key."
   when: 
     - existing_peer_by_name | length > 0
-    - existing_peer_by_name.public_key != client_public_key
+    - existing_peer_by_name.public_key != vpn_client_public_key
 
 - name: Fail if key is in use by different name
   ansible.builtin.fail:
     msg: "Public key is already in use by client '{{ existing_peer_by_key.name }}'."
   when:
     - existing_peer_by_key | length > 0
-    - existing_peer_by_key.name != client_name
+    - existing_peer_by_key.name != vpn_client_name
     - existing_peer_by_name | length == 0
 
 - name: Determine IP Address
@@ -81,12 +81,12 @@
     client_ip_addr: >-
       {{
         existing_peer_by_name.ip 
-        if (existing_peer_by_name | length > 0 and existing_peer_by_name.public_key == client_public_key)
+        if (existing_peer_by_name | length > 0 and existing_peer_by_name.public_key == vpn_client_public_key)
         else (wg_peers | map(attribute='ip') | max | default(1) | int + 1)
       }}
     mode_update: >-
       {{
-        existing_peer_by_name | length > 0 and existing_peer_by_name.public_key == client_public_key
+        existing_peer_by_name | length > 0 and existing_peer_by_name.public_key == vpn_client_public_key
       }}
 
 - name: Add client peer to server configuration
@@ -94,8 +94,8 @@
     path: /etc/wireguard/wg0.conf
     line: |
       [Peer]
-      # {{ client_name }}
-      PublicKey = {{ client_public_key }}
+      # {{ vpn_client_name }}
+      PublicKey = {{ vpn_client_public_key }}
       AllowedIPs = 10.0.0.{{ client_ip_addr }}/32
     insertafter: EOF
   notify:
@@ -117,18 +117,18 @@
 - name: Create client configuration file
   ansible.builtin.template:
     src: client.conf.j2
-    dest: "{{ client_name }}.conf"
+    dest: "{{ vpn_client_name }}.conf"
   vars:
     server_public_key: "{{ server_public_key_b64['content'] | b64decode | trim }}"
     wireguard_port: "{{ wg_port_raw.stdout | default('51820', true) }}"
 
 - name: Fetch client configuration file
   ansible.builtin.fetch:
-    src: "{{ client_name }}.conf"
+    src: "{{ vpn_client_name }}.conf"
     dest: "./"
     flat: yes
 
 - name: Remove remote client configuration file
   ansible.builtin.file:
-    path: "{{ client_name }}.conf"
+    path: "{{ vpn_client_name }}.conf"
     state: absent

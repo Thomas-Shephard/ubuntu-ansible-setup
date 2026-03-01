@@ -43,23 +43,23 @@ This playbook performs the initial, one-time server setup. It hardens the server
     *You will be prompted to create a vault password. Keep this safe.*
 
     Open `group_vars/secrets.yml` (using `ansible-vault edit group_vars/secrets.yml`) and set:
-    - `new_user_password`: The password for this user.
+    - `security_new_user_password`: The password for this user.
     - `webhook_secret`: A secret string for securing the GitHub webhook.
     - `github_pat`: (Optional) A GitHub Personal Access Token.
-    - `new_user_ssh_key`: Your public SSH key.
+    - `security_new_user_ssh_key`: Your public SSH key.
 
     **General Variables:**
     Open `group_vars/all.yml` and configure:
-    - `new_user`: The username for your new, non-root administrative user.
-    - `ssh_port`: The port for SSH (defaults to `22`).
-    - `vpn_port`: The UDP port for WireGuard (defaults to `51820`).
+    - `security_new_user`: The username for your new, non-root administrative user.
+    - `security_ssh_port`: The port for SSH (defaults to `22`).
+    - `vpn_listen_port`: The UDP port for WireGuard (defaults to `51820`).
 
 3.  **Run the Setup Playbook:**
     Execute the `setup.yml` playbook. Because you encrypted your secrets, you must include the `--ask-vault-pass` flag.
     ```bash
     ansible-playbook -i inventory setup.yml --ask-vault-pass --ask-pass --ask-become-pass
     ```
-    Initial setup is complete. The new user `new_user` has been created with sudo privileges.
+    Initial setup is complete. The new user `security_new_user` has been created with sudo privileges.
 
 4.  **Update Inventory for New User:**
     After the initial setup, password authentication for the new user is disabled. You must update your `inventory` file to connect as the new administrative user. Ensure you specify your SSH private key file and the correct SSH port.
@@ -74,21 +74,22 @@ This playbook performs the initial, one-time server setup. It hardens the server
 After the initial setup is complete, you can deploy one or more applications by running the `deploy.yml` playbook.
 
 1. **Configure Application Variables:**
-    Open `app_deployment/vars/main.yml` and configure your application's settings:
-    - `app_repo`: The Git repository URL of your application (e.g., `https://github.com/user/my-cool-app.git`).
-    - `app_branch`: The branch to deploy (defaults to `main`).
-    - `app_domain_name`: The domain name that will point to your application.
-    - `certbot_email`: Email address for Let's Encrypt expiration notifications.
+    Open `roles/app_deployment/vars/main.yml` and configure your application's settings:
+    - `app_deployment_repo`: The Git repository URL of your application (e.g., `https://github.com/user/my-cool-app.git`). *If using a private repo, you must use the SSH URL (e.g., `git@github.com:user/my-cool-app.git`).*
+    - `app_deployment_deploy_key`: (Optional) The raw text of your SSH private key (Deploy Key) if your repository is private.
+    - `app_deployment_branch`: The branch to deploy (defaults to `main`).
+    - `app_deployment_domain_name`: The domain name that will point to your application.
+    - `app_deployment_certbot_email`: Email address for Let's Encrypt expiration notifications.
     - `app_deployment_context`: (Optional) The context label for GitHub status updates (e.g., `deployment/production`). Defaults to `deployment/production`.
-    - `app_exposed_services`: A list defining which services from your `docker-compose.yml` should be accessible from the internet. 
+    - `app_deployment_exposed_services`: A list defining which services from your `docker-compose.yml` should be accessible from the internet. 
       ```yaml
-      app_exposed_services:
+      app_deployment_exposed_services:
         - name: "frontend"                            # Name of the service in docker-compose.yml
           port: "80"                                  # The port the app runs on INSIDE the container (e.g., 3000 for React, 80 for Nginx). We ignore/wipe host mappings (like 8080:80).
-          rule: "Host(`{{ app_domain_name }}`)"       # Traefik routing rule
+          rule: "Host(`{{ app_deployment_domain_name }}`)"       # Traefik routing rule
         - name: "api"
           port: "8080"
-          rule: "Host(`api.{{ app_domain_name }}`)"   # E.g., Expose API on a subdomain
+          rule: "Host(`api.{{ app_deployment_domain_name }}`)"   # E.g., Expose API on a subdomain
       ```
 
     > **Note:** You do **not** need to modify your `docker-compose.yml` for this deployment. Ansible automatically injects a `docker-compose.override.yml` that removes any hardcoded host port mappings and seamlessly bridges traffic from Traefik to your specified internal ports.
@@ -124,19 +125,19 @@ After the initial setup is complete, you can deploy one or more applications by 
 This playbook adds a new client to the **WireGuard VPN**. WireGuard runs on UDP port `51820` (by default) and is used to securely access internal services (like the Traefik Dashboard or internal app endpoints) without exposing them to the public internet.
 
 1.  **Configure Client Variables:**
-    Open `wireguard_add_client/vars/main.yml` and set:
-    - `client_name`: A unique name for your device.
-    - `client_public_key`: The public key of your WireGuard client.
+    Open `roles/wireguard_add_client/vars/main.yml` and set:
+    - `vpn_client_name`: A unique name for your device.
+    - `vpn_client_public_key`: The public key of your WireGuard client.
       **Note:** WireGuard keys are based on Curve25519 and are not compatible with typical RSA or SSH keys.
 
 2.  **Run the Playbook:**
     ```bash
     ansible-playbook -i inventory add_client.yml --ask-become-pass
     ```
-    This will generate a `<client_name>.conf` file in the project root.
+    This will generate a `<vpn_client_name>.conf` file in the project root.
 
 3.  **Finalize & Import:**
-    Open the generated `<client_name>.conf` file, replace `YOUR_CLIENT_PRIVATE_KEY` with your client's private key, and then import the configuration into your WireGuard client application.
+    Open the generated `<vpn_client_name>.conf` file, replace `YOUR_CLIENT_PRIVATE_KEY` with your client's private key, and then import the configuration into your WireGuard client application.
     > **Note:** The generated configuration uses **Split Tunneling**. Only traffic to the internal network (`10.0.0.0/24`) is routed through the VPN. Your normal internet traffic remains direct.
 
 ### Advanced Usage: Ansible Tags

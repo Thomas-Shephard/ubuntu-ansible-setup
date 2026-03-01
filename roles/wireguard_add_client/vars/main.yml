@@ -1,0 +1,5 @@
+---
+# vars file for wireguard_add_client
+vpn_client_name: client2
+vpn_client_public_key: "CLIENT_PUBLIC_KEY"
+wireguard_dns: "10.0.0.1"
