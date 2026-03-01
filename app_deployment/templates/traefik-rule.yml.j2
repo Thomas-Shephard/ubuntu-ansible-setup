@@ -9,6 +9,12 @@ http:
       tls:
         certResolver: myresolver
 
+    {{ app_user }}-{{ svc.name }}-internal-router:
+      rule: "Host(`{{ svc.name }}.{{ app_domain_name }}.internal`)"
+      entryPoints:
+        - web
+      service: {{ app_user }}-{{ svc.name }}-service
+
 {% endfor %}
     {{ app_user }}-webhook-router:
       rule: "Host(`webhook.{{ app_domain_name }}`)"

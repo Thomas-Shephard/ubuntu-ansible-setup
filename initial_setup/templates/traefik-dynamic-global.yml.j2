@@ -1,0 +1,24 @@
+http:
+  middlewares:
+    redirect-to-https:
+      redirectScheme:
+        scheme: https
+        permanent: true
+
+  routers:
+    # Catch-all HTTP to HTTPS redirect, lowest priority
+    http-catchall:
+      rule: "PathPrefix(`/`)"
+      entryPoints:
+        - web
+      middlewares:
+        - redirect-to-https
+      service: noop@internal
+      priority: 1
+
+    # Expose the Traefik Dashboard internally
+    traefik-dashboard:
+      rule: "Host(`traefik.internal`)"
+      entryPoints:
+        - web
+      service: api@internal

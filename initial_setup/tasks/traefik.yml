@@ -72,6 +72,15 @@
     mode: '0600'
   become: yes
 
+- name: Template Traefik global dynamic config
+  ansible.builtin.template:
+    src: traefik-dynamic-global.yml.j2
+    dest: "/etc/traefik/dynamic/00-global.yml"
+    owner: root
+    group: traefik
+    mode: '0644'
+  become: yes
+
 - name: Template Traefik docker-compose.yml
   ansible.builtin.template:
     src: traefik-docker-compose.yml.j2

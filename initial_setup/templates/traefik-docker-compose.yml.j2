@@ -9,9 +9,6 @@ services:
       - "--providers.file.watch=true"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
-      # Global HTTP -> HTTPS redirect
-      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
       # ACME configuration
       - "--certificatesresolvers.myresolver.acme.email={{ certbot_email | default('admin@example.com') }}"
       - "--certificatesresolvers.myresolver.acme.storage=/acme.json"
