@@ -1,0 +1,19 @@
+[Unit]
+Description=Traefik Docker Compose Service
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/traefik_proxy/app
+Environment="DOCKER_HOST=unix:///run/user/{{ app_user_uid.stdout }}/docker.sock"
+Environment="PATH=/home/traefik_proxy/bin:/usr/local/bin:/usr/bin:/bin"
+
+ExecStart=/home/traefik_proxy/bin/docker compose up
+ExecStop=/home/traefik_proxy/bin/docker compose down
+
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

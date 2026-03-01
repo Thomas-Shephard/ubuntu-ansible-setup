@@ -1,0 +1,123 @@
+---
+# tasks file for Traefik setup
+
+- name: Ensure traefik group exists
+  ansible.builtin.group:
+    name: traefik
+    state: present
+
+- name: Create traefik_proxy user
+  ansible.builtin.user:
+    name: traefik_proxy
+    shell: /usr/sbin/nologin
+    system: yes
+    create_home: yes
+    group: traefik
+
+- name: Create /etc/traefik directory
+  ansible.builtin.file:
+    path: /etc/traefik
+    state: directory
+    owner: root
+    group: traefik
+    mode: '0755'
+
+- name: Create /etc/traefik/dynamic directory
+  ansible.builtin.file:
+    path: /etc/traefik/dynamic
+    state: directory
+    owner: root
+    group: traefik
+    mode: '2775'
+
+- name: Create /opt/traefik/sockets directory
+  ansible.builtin.file:
+    path: /opt/traefik/sockets
+    state: directory
+    owner: root
+    group: traefik
+    mode: '2777'
+
+- name: Allow HTTP and HTTPS through UFW
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - 80
+    - 443
+  become: yes
+
+- name: Set app_user for rootless docker
+  ansible.builtin.set_fact:
+    app_user: traefik_proxy
+
+- name: Setup rootless docker for traefik_proxy
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/app_deployment/tasks/rootless_docker.yml"
+
+- name: Create Traefik app directory
+  ansible.builtin.file:
+    path: "/home/traefik_proxy/app"
+    state: directory
+    owner: traefik_proxy
+    group: traefik
+    mode: '0755'
+
+- name: Create LetsEncrypt acme.json file
+  ansible.builtin.file:
+    path: "/home/traefik_proxy/app/acme.json"
+    state: touch
+    owner: traefik_proxy
+    group: traefik
+    mode: '0600'
+  become: yes
+
+- name: Template Traefik docker-compose.yml
+  ansible.builtin.template:
+    src: traefik-docker-compose.yml.j2
+    dest: "/home/traefik_proxy/app/docker-compose.yml"
+    owner: traefik_proxy
+    group: traefik
+    mode: '0644'
+  notify: restart traefik app service
+  become: yes
+
+- name: Create systemd user directory for traefik_proxy
+  ansible.builtin.file:
+    path: "/home/traefik_proxy/.config/systemd/user"
+    state: directory
+    owner: traefik_proxy
+    group: traefik
+    mode: '0755'
+  become: yes
+
+- name: Template Traefik systemd service
+  ansible.builtin.template:
+    src: traefik-app.service.j2
+    dest: "/home/traefik_proxy/.config/systemd/user/app.service"
+    owner: traefik_proxy
+    group: traefik
+    mode: '0644'
+  become: yes
+  notify: restart traefik app service
+
+- name: Force systemd to re-read configs
+  ansible.builtin.systemd:
+    daemon_reload: yes
+  become: yes
+  become_user: traefik_proxy
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout }}/bus"
+
+- name: Enable and start Traefik service
+  ansible.builtin.systemd:
+    name: app.service
+    scope: user
+    enabled: yes
+    state: started
+  become: yes
+  become_user: traefik_proxy
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout }}/bus"

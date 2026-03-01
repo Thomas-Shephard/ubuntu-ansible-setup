@@ -12,11 +12,17 @@
 - name: Include hardening tasks
   ansible.builtin.include_tasks: hardening.yml
 
-- name: Include reverse_proxy tasks
-  ansible.builtin.include_tasks: reverse_proxy.yml
+- name: Include traefik setup
+  ansible.builtin.include_tasks: traefik.yml
 
-- name: Include status_server tasks
-  ansible.builtin.include_tasks: status_server.yml
+- name: Allow unprivileged users to bind to ports 80 and 443
+  ansible.builtin.sysctl:
+    name: net.ipv4.ip_unprivileged_port_start
+    value: '80'
+    sysctl_set: yes
+    state: present
+    reload: yes
+  become: yes
 
 - name: Include vpn tasks
   ansible.builtin.include_tasks: vpn.yml
