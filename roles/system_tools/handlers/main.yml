@@ -1,0 +1,7 @@
+---
+# handlers file for system_tools
+- name: restart webhook
+  ansible.builtin.systemd:
+    name: webhook
+    state: restarted
+  become: yes

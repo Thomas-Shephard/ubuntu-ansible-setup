@@ -5,6 +5,7 @@
   ansible.builtin.group:
     name: traefik
     state: present
+  become: yes
 
 - name: Create traefik_proxy user
   ansible.builtin.user:
@@ -13,6 +14,7 @@
     system: yes
     create_home: yes
     group: traefik
+  become: yes
 
 - name: Create /etc/traefik directory
   ansible.builtin.file:
@@ -21,6 +23,7 @@
     owner: root
     group: traefik
     mode: '0755'
+  become: yes
 
 - name: Create /etc/traefik/dynamic directory
   ansible.builtin.file:
@@ -29,6 +32,7 @@
     owner: root
     group: traefik
     mode: '2775'
+  become: yes
 
 - name: Create /opt/traefik/sockets directory
   ansible.builtin.file:
@@ -37,6 +41,7 @@
     owner: root
     group: traefik
     mode: '2770'
+  become: yes
 
 - name: Allow HTTP and HTTPS through UFW
   community.general.ufw:
@@ -53,7 +58,9 @@
     app_user: traefik_proxy
 
 - name: Setup rootless docker for traefik_proxy
-  ansible.builtin.include_tasks: "{{ playbook_dir }}/app_deployment/tasks/rootless_docker.yml"
+  ansible.builtin.include_role:
+    name: docker_host
+    tasks_from: rootless_docker.yml
 
 - name: Create Traefik app directory
   ansible.builtin.file:
@@ -62,6 +69,7 @@
     owner: traefik_proxy
     group: traefik
     mode: '0755'
+  become: yes
 
 - name: Create LetsEncrypt acme.json file
   ansible.builtin.file:
@@ -120,5 +128,5 @@
   become: yes
   become_user: traefik_proxy
   environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
-    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout }}/bus"
+    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout | default('$(id -u traefik_proxy)', true) }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout | default('$(id -u traefik_proxy)', true) }}/bus"

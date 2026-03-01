@@ -1,0 +1,13 @@
+---
+# handlers file for vpn
+- name: restart wireguard
+  ansible.builtin.systemd:
+    name: wg-quick@wg0
+    state: restarted
+  become: yes
+
+- name: restart dnsmasq
+  ansible.builtin.systemd:
+    name: dnsmasq
+    state: restarted
+  become: yes

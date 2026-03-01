@@ -1,5 +1,5 @@
 ---
-# tasks file for vpn_setup
+# tasks file for vpn
 - name: Install WireGuard
   ansible.builtin.apt:
     name: wireguard
@@ -8,44 +8,52 @@
   until: apt_install_wireguard_result is successful
   retries: 10
   delay: 10
+  become: yes
 
 - name: Allow WireGuard through UFW
   community.general.ufw:
     rule: allow
     port: "{{ vpn_port }}"
     proto: udp
+  become: yes
 
 - name: Create WireGuard configuration directory
   ansible.builtin.file:
     path: /etc/wireguard
     state: directory
     mode: '0700'
+  become: yes
 
 - name: Generate server private key
   ansible.builtin.shell: wg genkey > /etc/wireguard/server_private.key
   args:
     creates: /etc/wireguard/server_private.key
   register: gen_private_key
+  become: yes
 
 - name: Set permissions on server private key
   ansible.builtin.file:
     path: /etc/wireguard/server_private.key
     mode: '0600'
+  become: yes
 
 - name: Read server private key
   ansible.builtin.slurp:
     src: /etc/wireguard/server_private.key
   register: server_private_key_content
+  become: yes
 
 - name: Generate server public key
   ansible.builtin.shell: wg pubkey < /etc/wireguard/server_private.key > /etc/wireguard/server_public.key
   args:
     creates: /etc/wireguard/server_public.key
+  become: yes
 
 - name: Read server public key
   ansible.builtin.slurp:
     src: /etc/wireguard/server_public.key
   register: server_public_key_content
+  become: yes
 
 - name: Create WireGuard configuration
   ansible.builtin.template:
@@ -56,7 +64,10 @@
   vars:
     server_private_key:
       stdout: "{{ server_private_key_content['content'] | b64decode | trim }}"
-  notify: restart wireguard
+  notify: 
+    - restart wireguard
+    - restart dnsmasq
+  become: yes
 
 - name: Enable IP forwarding
   ansible.builtin.sysctl:
@@ -65,9 +76,11 @@
     sysctl_set: yes
     state: present
     reload: yes
+  become: yes
 
 - name: Ensure WireGuard service is enabled and started
   ansible.builtin.systemd:
     name: wg-quick@wg0
     enabled: yes
     state: started
+  become: yes

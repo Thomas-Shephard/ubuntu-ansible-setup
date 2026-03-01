@@ -51,7 +51,9 @@
   become: yes
 
 - name: Set up rootless docker for app user
-  ansible.builtin.include_tasks: rootless_docker.yml
+  ansible.builtin.include_role:
+    name: docker_host
+    tasks_from: rootless_docker.yml
 
 - name: Create app directory
   ansible.builtin.file:

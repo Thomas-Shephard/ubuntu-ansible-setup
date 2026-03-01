@@ -1,41 +1,5 @@
 ---
-# tasks file for initial_setup
-- name: Ensure remote_tmp directory exists with correct permissions
-  ansible.builtin.file:
-    path: "/home/{{ ansible_user }}/.ansible/tmp"
-    state: directory
-    mode: '0755'
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-  become: yes
-
-- name: Include hardening tasks
-  ansible.builtin.include_tasks: hardening.yml
-
-- name: Include traefik setup
-  ansible.builtin.include_tasks: traefik.yml
-
-- name: Allow unprivileged users to bind to ports 80 and 443
-  ansible.builtin.sysctl:
-    name: net.ipv4.ip_unprivileged_port_start
-    value: '80'
-    sysctl_set: yes
-    state: present
-    reload: yes
-  become: yes
-
-- name: Include vpn tasks
-  ansible.builtin.include_tasks: vpn.yml
-
-- name: Include dns tasks
-  ansible.builtin.include_tasks: dns.yml
-
-- name: Include webhook tasks
-  ansible.builtin.include_tasks: webhook.yml
-
-- name: Include backup tasks
-  ansible.builtin.include_tasks: backup.yml
-
+# tasks file for docker_host
 - name: Install prerequisite packages for Docker
   ansible.builtin.apt:
     name:
@@ -52,6 +16,7 @@
   until: apt_install_prereq_result is successful
   retries: 10
   delay: 10
+  become: yes
 
 - name: Create directory for Docker GPG key
   ansible.builtin.file:
@@ -77,6 +42,8 @@
 - name: Dearmor Docker GPG key
   ansible.builtin.command:
     cmd: "gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.gpg"
+  args:
+    creates: /etc/apt/keyrings/docker.gpg
   become: yes
   when: not docker_gpg_existing.stat.exists
 
@@ -103,9 +70,3 @@
   retries: 10
   delay: 10
   become: yes
-
-- name: Deploy MOTD
-  ansible.builtin.template:
-    src: 99-ansible-motd.j2
-    dest: /etc/update-motd.d/99-ansible-motd
-    mode: '0755'

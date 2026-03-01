@@ -1,0 +1,12 @@
+---
+# handlers file for security
+- name: restart sshd
+  ansible.builtin.service:
+    name: sshd
+    state: restarted
+  become: yes
+- name: restart fail2ban
+  ansible.builtin.service:
+    name: fail2ban
+    state: restarted
+  become: yes

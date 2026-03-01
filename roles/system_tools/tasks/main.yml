@@ -1,5 +1,5 @@
 ---
-# tasks file for webhook
+# tasks file for system_tools
 - name: Install Python packages
   ansible.builtin.apt:
     name:
@@ -8,7 +8,7 @@
       - virtualenv
       - python3-setuptools
       - gunicorn
-      - python3-requests # Added for GitHub API interaction
+      - python3-requests
     state: present
   become: yes
   register: apt_install_python_result
@@ -20,6 +20,7 @@
   ansible.builtin.group:
     name: webhook
     state: present
+  become: yes
 
 - name: Create webhook user
   ansible.builtin.user:
@@ -29,6 +30,7 @@
     home: /opt/webhook
     create_home: no
     state: present
+  become: yes
 
 - name: Create webhook directory
   ansible.builtin.file:
@@ -37,6 +39,7 @@
     owner: webhook
     group: webhook
     mode: '0750'
+  become: yes
 
 - name: Create webhook config directory
   ansible.builtin.file:
@@ -45,6 +48,7 @@
     owner: root
     group: webhook
     mode: '0750'
+  become: yes
 
 - name: Create webhook listener script
   ansible.builtin.template:
@@ -54,6 +58,7 @@
     group: webhook
     mode: '0700'
   notify: restart webhook
+  become: yes
 
 - name: Create update script
   ansible.builtin.template:
@@ -62,6 +67,7 @@
     owner: root
     group: root
     mode: '0755'
+  become: yes
 
 - name: Configure sudoers for webhook user
   ansible.builtin.lineinfile:
@@ -70,6 +76,7 @@
     mode: '0440'
     line: "webhook ALL=(root) NOPASSWD: /opt/webhook/update.sh"
     validate: /usr/sbin/visudo -cf %s
+  become: yes
 
 - name: Create systemd service for webhook listener
   ansible.builtin.template:
@@ -78,6 +85,7 @@
   vars:
     github_token_env: "{% if github_pat %}Environment=GITHUB_TOKEN={{ github_pat }}{% endif %}"
   notify: restart webhook
+  become: yes
 
 - name: Ensure webhook service is enabled and started
   ansible.builtin.systemd:
@@ -85,3 +93,37 @@
     enabled: yes
     state: started
     daemon_reload: yes
+  become: yes
+
+- name: Install tar
+  ansible.builtin.apt:
+    name:
+      - tar
+    state: present
+  become: yes
+
+- name: Create backup directory
+  ansible.builtin.file:
+    path: /var/backups/apps
+    state: directory
+    mode: '0700'
+    owner: root
+    group: root
+  become: yes
+
+- name: Deploy backup script
+  ansible.builtin.template:
+    src: backup_apps.sh.j2
+    dest: /usr/local/bin/backup_apps.sh
+    mode: '0700'
+    owner: root
+    group: root
+  become: yes
+
+- name: Schedule daily backup
+  ansible.builtin.cron:
+    name: "Daily App Backup"
+    minute: "0"
+    hour: "3"
+    job: "/usr/local/bin/backup_apps.sh"
+  become: yes

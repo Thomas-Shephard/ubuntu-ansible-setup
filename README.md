@@ -34,24 +34,30 @@ This playbook performs the initial, one-time server setup. It hardens the server
 2.  **Configure Server Variables:**
 
     **Sensitive Variables:**
-    Copy the example secrets file to a real secrets file (which is ignored by Git):
+    Copy the example secrets file to a real secrets file (which is ignored by Git), and encrypt it using Ansible Vault. This ensures your credentials are never committed in plaintext.
 
-    Open `initial_setup/vars/secrets.yml` and set:
+    ```bash
+    cp group_vars/secrets.example.yml group_vars/secrets.yml
+    ansible-vault encrypt group_vars/secrets.yml
+    ```
+    *You will be prompted to create a vault password. Keep this safe.*
+
+    Open `group_vars/secrets.yml` (using `ansible-vault edit group_vars/secrets.yml`) and set:
     - `new_user_password`: The password for this user.
     - `webhook_secret`: A secret string for securing the GitHub webhook.
     - `github_pat`: (Optional) A GitHub Personal Access Token.
     - `new_user_ssh_key`: Your public SSH key.
 
     **General Variables:**
-    Open `initial_setup/vars/main.yml` and configure:
+    Open `group_vars/all.yml` and configure:
     - `new_user`: The username for your new, non-root administrative user.
     - `ssh_port`: The port for SSH (defaults to `22`).
     - `vpn_port`: The UDP port for WireGuard (defaults to `51820`).
 
 3.  **Run the Setup Playbook:**
-    Execute the `setup.yml` playbook.
+    Execute the `setup.yml` playbook. Because you encrypted your secrets, you must include the `--ask-vault-pass` flag.
     ```bash
-    ansible-playbook -i inventory setup.yml --ask-pass --ask-become-pass
+    ansible-playbook -i inventory setup.yml --ask-vault-pass --ask-pass --ask-become-pass
     ```
     Initial setup is complete. The new user `new_user` has been created with sudo privileges.
 
@@ -105,7 +111,7 @@ After the initial setup is complete, you can deploy one or more applications by 
     - In your GitHub repository, go to **Settings > Webhooks > Add webhook**.
     - **Payload URL:** `https://webhook.<your_app_domain>/webhook`
     - **Content type:** `application/json`
-    - **Secret:** The value of `webhook_secret` from `initial_setup/vars/main.yml`.
+    - **Secret:** The value of `webhook_secret` from `group_vars/secrets.yml`.
     - **SSL verification:** Select **"Enable SSL verification"** (Recommended).
     - **Events:** Select "Just the push event".
 
@@ -133,9 +139,27 @@ This playbook adds a new client to the **WireGuard VPN**. WireGuard runs on UDP 
     Open the generated `<client_name>.conf` file, replace `YOUR_CLIENT_PRIVATE_KEY` with your client's private key, and then import the configuration into your WireGuard client application.
     > **Note:** The generated configuration uses **Split Tunneling**. Only traffic to the internal network (`10.0.0.0/24`) is routed through the VPN. Your normal internet traffic remains direct.
 
+### Advanced Usage: Ansible Tags
+
+The playbooks are heavily tagged, allowing you to run specific parts of the setup without executing the entire playbook. This is useful for updates or specific administrative tasks.
+
+```bash
+# Only run the VPN setup tasks (e.g., after updating wireguard config)
+ansible-playbook -i inventory setup.yml --tags "vpn" --ask-vault-pass --ask-become-pass
+
+# Only update security configurations (UFW, fail2ban)
+ansible-playbook -i inventory setup.yml --tags "security" --ask-vault-pass --ask-become-pass
+
+# Re-run just the Traefik proxy setup
+ansible-playbook -i inventory setup.yml --tags "traefik" --ask-vault-pass --ask-become-pass
+```
+
+Available tags in `setup.yml`: `security`, `docker`, `traefik`, `vpn`, `dns`, `tools`.
+
 ---
 
-### Troubleshooting & Operations    
+### Troubleshooting & Operations
+
 #### Viewing Application Logs
 Each application runs as a systemd user service. To view the logs for a specific application:
 ```bash
