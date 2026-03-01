@@ -1,0 +1,141 @@
+---
+# Molecule Verify Playbook
+# This playbook runs after 'converge' to assert that the system state matches expectations.
+
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    # ---------------------------------------------------------
+    # 1. Security & User Validation
+    # ---------------------------------------------------------
+    - name: Verify administrative user exists
+      ansible.builtin.getent:
+        database: passwd
+        key: vagrant
+
+    - name: Verify root login is disabled
+      ansible.builtin.command: grep "^PermitRootLogin no" /etc/ssh/sshd_config
+      changed_when: false
+
+    - name: Verify password authentication is disabled
+      ansible.builtin.command: grep "^PasswordAuthentication no" /etc/ssh/sshd_config
+      changed_when: false
+
+    - name: Verify UFW is active and enforcing
+      ansible.builtin.command: ufw status verbose
+      register: ufw_status
+      changed_when: false
+      failed_when: 
+        - "'Status: active' not in ufw_status.stdout"
+        - "'Default: deny (incoming)' not in ufw_status.stdout"
+
+    - name: Verify UFW allows essential ports
+      ansible.builtin.command: ufw status
+      register: ufw_ports
+      changed_when: false
+      failed_when:
+        - "'22/tcp' not in ufw_ports.stdout"
+        - "'80/tcp' not in ufw_ports.stdout"
+        - "'443/tcp' not in ufw_ports.stdout"
+        - "'51820/udp' not in ufw_ports.stdout"
+
+    - name: Verify fail2ban service is running
+      ansible.builtin.systemd:
+        name: fail2ban
+      register: fail2ban_service
+      failed_when: fail2ban_service.status.ActiveState != 'active'
+
+    # ---------------------------------------------------------
+    # 2. Networking & VPN Validation
+    # ---------------------------------------------------------
+    - name: Verify TUN device exists (required for rootless networking and VPN)
+      ansible.builtin.stat:
+        path: /dev/net/tun
+      register: tun_device
+      failed_when: not tun_device.stat.exists
+    - name: Verify WireGuard service is running
+      ansible.builtin.systemd:
+        name: wg-quick@wg0
+      register: wg_service
+      failed_when: wg_service.status.ActiveState != 'active'
+
+    - name: Verify IP forwarding is enabled for VPN routing
+      ansible.builtin.command: sysctl -n net.ipv4.ip_forward
+      register: ip_forward
+      changed_when: false
+      failed_when: ip_forward.stdout | trim != '1'
+
+    - name: Verify dnsmasq is running and bound to VPN interface
+      ansible.builtin.systemd:
+        name: dnsmasq
+      register: dnsmasq_service
+      failed_when: dnsmasq_service.status.ActiveState != 'active'
+
+    - name: Verify internal DNS resolution works
+      ansible.builtin.command: dig +short @10.0.0.1 traefik.internal
+      register: dig_traefik
+      changed_when: false
+      failed_when: dig_traefik.stdout | trim != '10.0.0.1'
+
+    # ---------------------------------------------------------
+    # 3. Traefik Proxy Validation
+    # ---------------------------------------------------------
+    - name: Verify traefik socket directory permissions (SGID)
+      ansible.builtin.stat:
+        path: /opt/traefik/sockets
+      register: socket_dir
+      failed_when: 
+        - socket_dir.stat.mode != '2770'
+        - socket_dir.stat.pw_name != 'root'
+        - socket_dir.stat.gr_name != 'traefik'
+
+    - name: Verify traefik system user exists
+      ansible.builtin.getent:
+        database: passwd
+        key: traefik_proxy
+
+    # ---------------------------------------------------------
+    # 4. App Deployment & System Tools Validation
+    # ---------------------------------------------------------
+    - name: Verify webhook service is running
+      ansible.builtin.systemd:
+        name: webhook
+      register: webhook_service
+      failed_when: webhook_service.status.ActiveState != 'active'
+
+    - name: Verify dummy-app system user was created
+      ansible.builtin.getent:
+        database: passwd
+        key: dummy-app
+      register: app_user_check
+      failed_when: app_user_check.ansible_facts.getent_passwd['dummy-app'] is not defined
+
+    - name: Verify dummy-app is a member of the traefik group
+      ansible.builtin.command: id -nG dummy-app
+      register: app_user_groups
+      changed_when: false
+      failed_when: "'traefik' not in app_user_groups.stdout"
+
+    - name: Verify rootless Docker socket exists for dummy-app
+      ansible.builtin.command: id -u dummy-app
+      register: dummy_app_uid
+      changed_when: false
+
+    - name: Assert rootless socket path
+      ansible.builtin.stat:
+        path: "/run/user/{{ dummy_app_uid.stdout }}/docker.sock"
+      register: rootless_socket
+      failed_when: not rootless_socket.stat.exists
+
+    - name: Verify docker-compose.override.yml was generated
+      ansible.builtin.stat:
+        path: /home/dummy-app/app/docker-compose.override.yml
+      register: override_file
+      failed_when: not override_file.stat.exists
+
+    - name: Verify automated backup cron job exists
+      ansible.builtin.command: crontab -l
+      register: crontab_list
+      changed_when: false
+      failed_when: "'backup_apps.sh' not in crontab_list.stdout"

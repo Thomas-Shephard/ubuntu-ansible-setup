@@ -1,0 +1,25 @@
+---
+dependency:
+  name: galaxy
+driver:
+  name: vagrant
+  provider:
+    name: virtualbox
+platforms:
+  - name: ubuntu-ansible-setup-test
+    box: generic/ubuntu2404
+    memory: 2048
+    cpus: 2
+provisioner:
+  name: ansible
+  inventory:
+    group_vars:
+      all:
+        security_new_user: "vagrant"
+        security_ssh_port: 22
+        vpn_listen_port: 51820
+        app_deployment_repo: "https://github.com/thomas/dummy-app.git"
+        app_deployment_domain_name: "test.local"
+        app_deployment_certbot_email: "test@test.local"
+verifier:
+  name: ansible

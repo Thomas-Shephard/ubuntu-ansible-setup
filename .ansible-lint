@@ -1,0 +1,17 @@
+---
+profile: production
+
+exclude_paths:
+  - .github/
+  - molecule/
+
+warn_list:
+  - experimental
+
+rulesdir:
+  - .ansible-lint-rules/
+
+# Ignore specific rules if they conflict with intentional design choices
+skip_list:
+  - no-changed-when # Sometimes unavoidable with complex shell commands
+  - command-instead-of-module # Occasionally necessary for very specific edge cases like wg genkey
