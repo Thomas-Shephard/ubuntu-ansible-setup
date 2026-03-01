@@ -10,6 +10,6 @@ app_deployment_certbot_email: "email@example.com"
 app_deployment_context: "deployment/production"
 app_deployment_branch: "main"
 app_deployment_exposed_services:
-  - name: "app"                                 # Name of the service in docker-compose.yml
-    port: "80"                                  # The port the app runs on INSIDE the container (e.g., 3000 for React, 80 for Nginx). We ignore/wipe host mappings (like 8080:80).
-    rule: "Host(`{{ app_deployment_domain_name }}`)"       # Traefik routing rule
+  - name: "app"  # The name of the service in docker-compose.yml
+    port: "80"  # The port the app runs on INSIDE the container
+    rule: "Host(`{{ app_deployment_domain_name }}`)"  # Traefik routing rule

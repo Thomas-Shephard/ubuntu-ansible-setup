@@ -64,7 +64,7 @@
   vars:
     server_private_key:
       stdout: "{{ server_private_key_content['content'] | b64decode | trim }}"
-  notify: 
+  notify:
     - restart wireguard
     - restart dnsmasq
   become: yes

@@ -129,4 +129,5 @@
   become_user: traefik_proxy
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout | default('$(id -u traefik_proxy)', true) }}"
-    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout | default('$(id -u traefik_proxy)', true) }}/bus"
+    DBUS_SESSION_BUS_ADDRESS: >-
+      unix:path=/run/user/{{ app_user_uid.stdout | default('$(id -u traefik_proxy)', true) }}/bus

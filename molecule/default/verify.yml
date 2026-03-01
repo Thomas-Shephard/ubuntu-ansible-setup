@@ -26,7 +26,7 @@
       ansible.builtin.command: ufw status verbose
       register: ufw_status
       changed_when: false
-      failed_when: 
+      failed_when:
         - "'Status: active' not in ufw_status.stdout"
         - "'Default: deny (incoming)' not in ufw_status.stdout"
 
@@ -85,7 +85,7 @@
       ansible.builtin.stat:
         path: /opt/traefik/sockets
       register: socket_dir
-      failed_when: 
+      failed_when:
         - socket_dir.stat.mode != '2770'
         - socket_dir.stat.pw_name != 'root'
         - socket_dir.stat.gr_name != 'traefik'

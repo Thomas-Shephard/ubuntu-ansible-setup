@@ -64,7 +64,7 @@
 - name: Fail if name is taken by different key
   ansible.builtin.fail:
     msg: "Client name '{{ vpn_client_name }}' is already in use by a different key."
-  when: 
+  when:
     - existing_peer_by_name | length > 0
     - existing_peer_by_name.public_key != vpn_client_public_key
 
@@ -80,7 +80,7 @@
   ansible.builtin.set_fact:
     client_ip_addr: >-
       {{
-        existing_peer_by_name.ip 
+        existing_peer_by_name.ip
         if (existing_peer_by_name | length > 0 and existing_peer_by_name.public_key == vpn_client_public_key)
         else (wg_peers | map(attribute='ip') | max | default(1) | int + 1)
       }}

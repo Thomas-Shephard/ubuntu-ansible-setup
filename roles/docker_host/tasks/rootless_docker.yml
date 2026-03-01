@@ -66,8 +66,8 @@
         path: /dev/net/tun
       register: tun_device_check
       become: yes
-      become_user: root # Check as root because app_user might not have permissions to read /dev/net
-    
+      become_user: root  # Check as root because app_user might not have permissions to read /dev/net
+
     - name: Fail if /dev/net/tun is missing
       ansible.builtin.fail:
         msg: |
@@ -192,5 +192,7 @@
 
 - name: Fail if Docker socket does not exist
   ansible.builtin.fail:
-    msg: "The Docker socket at /run/user/{{ app_user_uid.stdout }}/docker.sock was not found. The rootless Docker daemon may have failed to start."
+    msg: >
+      The Docker socket at /run/user/{{ app_user_uid.stdout }}/docker.sock was not found.
+      The rootless Docker daemon may have failed to start.
   when: not docker_socket_file.stat.exists

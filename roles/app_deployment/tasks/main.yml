@@ -2,7 +2,9 @@
 # tasks file for app_deployment
 - name: "Fail if app_deployment_repo is not set"
   ansible.builtin.fail:
-    msg: "The 'app_deployment_repo' variable is set to the default placeholder 'your_app_repo.git'. Please provide a valid Git repository URL in roles/app_deployment/vars/main.yml."
+    msg: >
+      The 'app_deployment_repo' variable is set to the default placeholder 'your_app_repo.git'.
+      Please provide a valid Git repository URL in roles/app_deployment/vars/main.yml.
   when: app_deployment_repo == 'your_app_repo.git'
   run_once: true
 
@@ -54,14 +56,16 @@
     GIT_SSH_COMMAND: "ssh -o StrictHostKeyChecking=accept-new"
   register: git_check
   changed_when: false
-  failed_when: false # We handle the failure manually
+  failed_when: false  # Failure handled manually
   run_once: true
   become: yes
   become_user: "{{ app_user }}"
 
 - name: Fail if git repository is not accessible
   ansible.builtin.fail:
-    msg: "The git repository '{{ app_deployment_repo }}' is not accessible. Please check the URL and access rights. Error: {{ git_check.stderr }}"
+    msg: >
+      The git repository '{{ app_deployment_repo }}' is not accessible.
+      Please check the URL and access rights. Error: {{ git_check.stderr }}
   when: git_check.rc != 0
   run_once: true
 

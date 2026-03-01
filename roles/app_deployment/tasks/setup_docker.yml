@@ -105,7 +105,6 @@
   become_user: "{{ app_user }}"
   environment:
     DOCKER_HOST: "unix:///run/user/{{ app_user_uid.stdout }}/docker.sock"
-  changed_when: false
   until: >
     docker_startup_check.containers is defined and
     (docker_startup_check.containers | length > 0) and
@@ -114,11 +113,12 @@
       or
       (docker_startup_check.containers | selectattr('State', 'in', ['exited', 'dead']) | list | length > 0)
     )
-  retries: 24 # Wait up to 2 minutes (24 * 5s)
+  retries: 24  # Wait up to 2 minutes (24 * 5s)
   delay: 5
   failed_when: >
     docker_startup_check.failed or
-    (docker_startup_check.containers is defined and docker_startup_check.containers | selectattr('State', 'in', ['exited', 'dead']) | list | length > 0)
+    (docker_startup_check.containers is defined and docker_startup_check.containers
+    | selectattr('State', 'in', ['exited', 'dead']) | list | length > 0)
   ignore_errors: yes
 
 - name: Parse container status on failure
@@ -129,8 +129,11 @@
         selectattr('State', 'ne', 'running') |
         list
       }}
-  when: 
-    - docker_startup_check.failed or (docker_startup_check.containers is defined and docker_startup_check.containers | selectattr('State', 'in', ['exited', 'dead']) | list | length > 0)
+  when: >
+    docker_startup_check.failed or
+    (docker_startup_check.containers is defined and docker_startup_check.containers
+    | selectattr('State', 'in', ['exited', 'dead']) | list | length > 0)
+
 - name: Fetch service logs on startup failure
   ansible.builtin.command:
     cmd: "journalctl _UID={{ app_user_uid.stdout }} _SYSTEMD_USER_UNIT=app.service -n 100 --no-pager"
@@ -144,7 +147,7 @@
   vars:
     failure_message: |
       Containers failed to start properly!
-      
+
       Non-Running Containers:
       {% for container in non_running_containers %}
       - Name: {{ container.Name | default('Unknown', true) }}
@@ -152,7 +155,7 @@
         Exit Code: {{ container.ExitCode | default('N/A', true) }}
         Status: {{ container.Status }}
       {% endfor %}
-      
+
       Recent Service Logs:
       ---------------------------------------------------
       {{ startup_failure_logs.stdout }}

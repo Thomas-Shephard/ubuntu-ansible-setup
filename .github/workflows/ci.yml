@@ -2,9 +2,9 @@ name: Ansible CI
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
 
 jobs:
   lint:
@@ -30,7 +30,7 @@ jobs:
 
   molecule:
     name: Molecule Tests (Vagrant)
-    runs-on: macos-13 # MacOS runners natively support nested virtualization and VirtualBox
+    runs-on: macos-13  # MacOS runners natively support nested virtualization and VirtualBox
     needs: lint
     steps:
       - uses: actions/checkout@v4
