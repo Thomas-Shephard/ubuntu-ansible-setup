@@ -36,7 +36,7 @@
     state: directory
     owner: root
     group: traefik
-    mode: '2777'
+    mode: '2770'
 
 - name: Allow HTTP and HTTPS through UFW
   community.general.ufw:
@@ -110,21 +110,13 @@
   become: yes
   notify: restart traefik app service
 
-- name: Force systemd to re-read configs
-  ansible.builtin.systemd:
-    daemon_reload: yes
-  become: yes
-  become_user: traefik_proxy
-  environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
-    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout }}/bus"
-
 - name: Enable and start Traefik service
   ansible.builtin.systemd:
     name: app.service
     scope: user
     enabled: yes
     state: started
+    daemon_reload: yes
   become: yes
   become_user: traefik_proxy
   environment:

@@ -167,25 +167,18 @@
       become: yes
       become_user: "{{ app_user }}"
 
-- name: Reload systemd user daemon
-  ansible.builtin.command:
-    cmd: "systemctl --user daemon-reload"
-  become: yes
-  become_user: "{{ app_user }}"
-  environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
-    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout }}/bus"
-  changed_when: true
-
 - name: Start and enable rootless docker service for app_user
-  ansible.builtin.command:
-    cmd: "systemctl --user enable --now docker.service"
+  ansible.builtin.systemd:
+    name: docker.service
+    state: started
+    enabled: yes
+    scope: user
+    daemon_reload: yes
   become: yes
   become_user: "{{ app_user }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
     DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout }}/bus"
-  changed_when: true
 
 - name: Check for Docker socket
   ansible.builtin.stat:

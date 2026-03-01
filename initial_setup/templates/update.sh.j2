@@ -62,7 +62,7 @@ if [ -d "$APP_DIR" ]; then
   sudo -u "$APP_USER" \
        DOCKER_HOST="unix:///run/user/$APP_UID/docker.sock" \
        XDG_RUNTIME_DIR="/run/user/$APP_UID" \
-       /home/"$APP_USER"/bin/docker compose -f "$APP_DIR/docker-compose.yml" up -d --build
+       /home/"$APP_USER"/bin/docker compose --project-directory "$APP_DIR" up -d --build
 
   # 5. Prune dangling images to save space
   echo "Pruning dangling images..."

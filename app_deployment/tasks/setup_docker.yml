@@ -37,33 +37,27 @@
   notify: restart app service
 
 - name: Pull Docker images (this may take a while)
-  ansible.builtin.command:
-    cmd: "/home/{{ app_user }}/bin/docker compose pull"
-    chdir: "/home/{{ app_user }}/app"
+  community.docker.docker_compose_v2_pull:
+    project_src: "/home/{{ app_user }}/app"
   become: yes
   become_user: "{{ app_user }}"
   environment:
     DOCKER_HOST: "unix:///run/user/{{ app_user_uid.stdout }}/docker.sock"
     PATH: "/home/{{ app_user }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-  async: 1800 # Allow up to 30 minutes for pulling images
-  poll: 10    # Check status every 10 seconds
 
 - name: Build Docker images (this may take a while)
-  ansible.builtin.command:
-    cmd: "/home/{{ app_user }}/bin/docker compose build"
-    chdir: "/home/{{ app_user }}/app"
+  community.docker.docker_compose_v2_build:
+    project_src: "/home/{{ app_user }}/app"
   become: yes
   become_user: "{{ app_user }}"
   environment:
     DOCKER_HOST: "unix:///run/user/{{ app_user_uid.stdout }}/docker.sock"
     PATH: "/home/{{ app_user }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-  async: 1800 # Allow up to 30 minutes for building
-  poll: 10
 
 - name: Pre-check for failed containers to force restart
-  ansible.builtin.command:
-    cmd: "/home/{{ app_user }}/bin/docker compose ps -a --format json"
-    chdir: "/home/{{ app_user }}/app"
+  community.docker.docker_compose_v2:
+    project_src: "/home/{{ app_user }}/app"
+    state: present
   register: pre_check_containers
   become: yes
   become_user: "{{ app_user }}"
@@ -83,8 +77,8 @@
     XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
     DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout }}/bus"
   when: >
-    pre_check_containers.rc is defined and pre_check_containers.rc == 0 and
-    (pre_check_containers.stdout_lines | default([], true) | map('from_json') | selectattr('State', 'ne', 'running') | list | length > 0)
+    pre_check_containers.containers is defined and
+    (pre_check_containers.containers | selectattr('State', 'ne', 'running') | list | length > 0)
 
 - name: Flush handlers to ensure restart happens before status check
   ansible.builtin.meta: flush_handlers
@@ -103,9 +97,9 @@
     DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout }}/bus"
 
 - name: Wait for containers to start or fail (Fail Fast)
-  ansible.builtin.command:
-    cmd: "/home/{{ app_user }}/bin/docker compose ps -a --format json"
-    chdir: "/home/{{ app_user }}/app"
+  community.docker.docker_compose_v2:
+    project_src: "/home/{{ app_user }}/app"
+    state: present
   register: docker_startup_check
   become: yes
   become_user: "{{ app_user }}"
@@ -113,33 +107,30 @@
     DOCKER_HOST: "unix:///run/user/{{ app_user_uid.stdout }}/docker.sock"
   changed_when: false
   until: >
-    docker_startup_check.rc is defined and docker_startup_check.rc == 0 and
-    (docker_startup_check.stdout_lines | default([], true) | length > 0) and
+    docker_startup_check.containers is defined and
+    (docker_startup_check.containers | length > 0) and
     (
-      (docker_startup_check.stdout_lines | map('from_json') | selectattr('State', 'ne', 'running') | list | length == 0)
+      (docker_startup_check.containers | selectattr('State', 'ne', 'running') | list | length == 0)
       or
-      (docker_startup_check.stdout_lines | map('from_json') | selectattr('State', 'in', ['exited', 'dead']) | list | length > 0)
+      (docker_startup_check.containers | selectattr('State', 'in', ['exited', 'dead']) | list | length > 0)
     )
   retries: 24 # Wait up to 2 minutes (24 * 5s)
   delay: 5
   failed_when: >
-    docker_startup_check.rc is defined and docker_startup_check.rc != 0 or
-    (docker_startup_check.stdout_lines | default([], true) | map('from_json') | selectattr('State', 'in', ['exited', 'dead']) | list | length > 0)
+    docker_startup_check.failed or
+    (docker_startup_check.containers is defined and docker_startup_check.containers | selectattr('State', 'in', ['exited', 'dead']) | list | length > 0)
   ignore_errors: yes
 
 - name: Parse container status on failure
   ansible.builtin.set_fact:
     non_running_containers: >-
       {{
-        docker_startup_check.stdout_lines | default([], true) |
-        map('from_json') |
+        docker_startup_check.containers | default([], true) |
         selectattr('State', 'ne', 'running') |
         list
       }}
   when: 
-    - docker_startup_check.failed
-    - docker_startup_check.rc is defined
-    - docker_startup_check.rc == 0
+    - docker_startup_check.failed or (docker_startup_check.containers is defined and docker_startup_check.containers | selectattr('State', 'in', ['exited', 'dead']) | list | length > 0)
 - name: Fetch service logs on startup failure
   ansible.builtin.command:
     cmd: "journalctl _UID={{ app_user_uid.stdout }} _SYSTEMD_USER_UNIT=app.service -n 100 --no-pager"
@@ -156,9 +147,9 @@
       
       Non-Running Containers:
       {% for container in non_running_containers %}
-      - Name: {{ container.Name }}
+      - Name: {{ container.Name | default('Unknown', true) }}
         State: {{ container.State }}
-        Exit Code: {{ container.ExitCode }}
+        Exit Code: {{ container.ExitCode | default('N/A', true) }}
         Status: {{ container.Status }}
       {% endfor %}
       
@@ -172,8 +163,12 @@
     msg: "Deployment failed due to non-running containers. See above debug message for details."
   when: docker_startup_check.failed
 - name: Prune unused Docker objects
-  ansible.builtin.command:
-    cmd: "/home/{{ app_user }}/bin/docker system prune -f"
+  community.docker.docker_prune:
+    containers: yes
+    images: yes
+    networks: yes
+    volumes: yes
+    builder_cache: yes
   become: yes
   become_user: "{{ app_user }}"
   environment:

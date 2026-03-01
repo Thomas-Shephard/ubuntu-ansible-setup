@@ -21,14 +21,10 @@
     state: directory
     mode: '0700'
 
-- name: Check if server private key exists
-  ansible.builtin.stat:
-    path: /etc/wireguard/server_private.key
-  register: server_private_key_file
-
 - name: Generate server private key
   ansible.builtin.shell: wg genkey > /etc/wireguard/server_private.key
-  when: not server_private_key_file.stat.exists
+  args:
+    creates: /etc/wireguard/server_private.key
   register: gen_private_key
 
 - name: Set permissions on server private key
@@ -41,14 +37,10 @@
     src: /etc/wireguard/server_private.key
   register: server_private_key_content
 
-- name: Check if server public key exists
-  ansible.builtin.stat:
-    path: /etc/wireguard/server_public.key
-  register: server_public_key_file
-
 - name: Generate server public key
   ansible.builtin.shell: wg pubkey < /etc/wireguard/server_private.key > /etc/wireguard/server_public.key
-  when: not server_public_key_file.stat.exists or (gen_private_key.changed | default(false))
+  args:
+    creates: /etc/wireguard/server_public.key
 
 - name: Read server public key
   ansible.builtin.slurp:

@@ -6,6 +6,10 @@ This project provides a set of Ansible playbooks to automate the setup and confi
 
 - **Ansible:** Must be installed on your local machine.
   **Note:** Ansible does not support Windows as a control node. If you are on Windows, it is recommended to use Windows Subsystem for Linux (WSL) to run Ansible.
+- **Ansible Collections:** You must install the required collections for this project.
+  ```bash
+  ansible-galaxy collection install -r requirements.yml
+  ```
 - **Ubuntu:** A fresh installation of Ubuntu 24.04 or later.
 - **Initial Access:** You will need either direct root access or an account with `sudo` privileges on the server for the initial setup run.
 - **Domain Name:** A registered domain name is required for Nginx and Let's Encrypt SSL certificates.

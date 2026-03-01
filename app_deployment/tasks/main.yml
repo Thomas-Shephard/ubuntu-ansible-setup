@@ -38,6 +38,8 @@
     shell: /usr/sbin/nologin
     system: yes
     create_home: yes
+    groups: traefik
+    append: yes
 
 - name: Ensure remote_tmp directory exists for app_user
   ansible.builtin.file:
